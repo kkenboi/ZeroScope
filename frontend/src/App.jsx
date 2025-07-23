@@ -1,7 +1,12 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { ThemeProvider, createTheme } from "@mui/material/styles"
 import CssBaseline from "@mui/material/CssBaseline"
 import Layout from "./layout/Layout"
+
+import Login from "./pages/Login"
+import NotFound from "./pages/NotFound"
+import Register from "./pages/Register"
+import ProtectedRoute from "./components/ProtectedRoute"
 import EnvironmentalDashboard from "./pages/Dashboard"
 import Reports from "./pages/Reports"
 
@@ -209,6 +214,17 @@ const theme = createTheme({
   },
 })
 
+function Logout() {
+  localStorage.clear()
+  return <Navigate to="/login"/>
+}
+
+function RegisterAndLogout() {
+  localStorage.clear() // incase the access token has something, log out first
+  return <Register />
+}
+
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
@@ -216,7 +232,16 @@ function App() {
       <BrowserRouter>
         <Layout>
           <Routes>
-            <Route path="/" element={<EnvironmentalDashboard />} />
+            <Route path="/" element={
+              <ProtectedRoute>
+                <EnvironmentalDashboard />
+              </ProtectedRoute>
+              } 
+            />
+            <Route path="/login" element={<Login />} />
+            <Route path="/logout" element={<Logout />} />
+            <Route path="/register" element={<RegisterAndLogout />} />
+            <Route path="*" element={<NotFound />} />
             <Route path="/reports" element={<Reports />} />
           </Routes>
         </Layout>
