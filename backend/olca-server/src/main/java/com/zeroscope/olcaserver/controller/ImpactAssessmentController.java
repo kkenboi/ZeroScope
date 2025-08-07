@@ -26,10 +26,9 @@ public class ImpactAssessmentController {
 
     @GetMapping("/processes")
     public ResponseEntity<List<Map<String, String>>> getAllProcesses() {
-        
-        lcaService.loadDatabase();
-
-
+        if (!lcaService.isDatabaseLoaded()) {
+            lcaService.loadDatabase();
+        }
         return ResponseEntity.ok(lcaService.getAllProcesses());
     }
 
