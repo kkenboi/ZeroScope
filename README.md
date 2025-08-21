@@ -29,8 +29,9 @@ source venv/bin/activate       # Linux/Mac
 
 ---
 
-### **Step 3: Install Dependencies**
+### **Step 3: Install Dependencies in Backend**
 ```bash
+cd ../backend
 pip install -r requirements.txt
 ```
 

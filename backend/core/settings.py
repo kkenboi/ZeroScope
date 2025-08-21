@@ -30,9 +30,10 @@ load_dotenv()  # Load .env file
 SECRET_KEY = os.environ.get('SECRET_KEY')  # Now pulls from .env
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG') == 'True'  # Convert string to boolean
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+print("DEBUG mode is", DEBUG)
 
-ALLOWED_HOSTS = [] 
+ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
 # JWT
 REST_FRAMEWORK = {
