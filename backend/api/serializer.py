@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Note
+from .models import Project
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -12,9 +12,7 @@ class UserSerializer(serializers.ModelSerializer):
         user = User.objects.create_user(**validated_data) # ** Splits keywords
         return user
     
-class NoteSerializer(serializers.ModelSerializer):
+class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Note
-        fields = ["id", "title", "content", "created_at", "author"]
-        extra_kwargs = {"author": {"read_only": True}} # Prevent people from determining which author they are
-        
+        model = Project
+        fields = "__all__"

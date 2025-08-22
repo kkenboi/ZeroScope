@@ -9,6 +9,7 @@ import Register from "./pages/Register"
 import ProtectedRoute from "./components/ProtectedRoute"
 import EnvironmentalDashboard from "./pages/Dashboard"
 import Reports from "./pages/Reports"
+import Projects from "./pages/Projects"
 
 // Ultra-modern minimalist theme
 const theme = createTheme({
@@ -233,16 +234,15 @@ function App() {
         <Layout>
           <Routes>
             <Route path="/" element={
-              <ProtectedRoute>
                 <EnvironmentalDashboard />
-              </ProtectedRoute>
               } 
             />
             <Route path="/login" element={<Login />} />
             <Route path="/logout" element={<Logout />} />
             <Route path="/register" element={<RegisterAndLogout />} />
-            <Route path="*" element={<NotFound />} />
+            <Route path="/projects" element={<Projects />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Layout>
       </BrowserRouter>
