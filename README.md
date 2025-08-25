@@ -63,4 +63,6 @@ npm run dev
 - The backend and database are fully containerized; no need to install Python or PostgreSQL locally.
 - The frontend runs outside Docker and connects to the backend via API endpoints.
 
+- If model fields are updated, run `docker-compose run --rm django sh -c "pip install -r requirements.txt && python manage.py makemigrations"` instead before running with `docker-compose up`
+
 ---
