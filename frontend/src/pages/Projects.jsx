@@ -30,8 +30,9 @@ function Projects() {
     const [projects, setProjects] = useState([]);
     const [newProjectName, setProjectName] = useState("");
     const [selectedProject, setSelectedProject] = useState(null)
-    const [previewOpen, setPreviewOpen] = useState(false)
-    const [createDialogOpen, setCreateDialogOpen] = useState(false)
+    const [previewDialog, setPreviewDialog] = useState(false)
+    const [createDialog, setCreateDialog] = useState(false)
+    const [deleteDialog, setDeleteDialog] = useState(false)
     const navigate = useNavigate()
 
     // Load projects from backend
@@ -54,7 +55,7 @@ function Projects() {
         const result = await fetch("api/projects/", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({title: projectName}) // we are creating with this title (if model, has required fields that are not specified here, it will 400 error)
+            body: JSON.stringify({name: projectName}) // we are creating with this name (if model, has required fields that are not specified here, it will 400 error)
         });
         if (result.ok) {
             const newProject = await result.json();
@@ -62,17 +63,21 @@ function Projects() {
 
             // reset
             setProjectName("");
-            setCreateDialogOpen(false);
+            setCreateDialog(false);
         }
     }
 
     // Delete a project
     const deleteProject = async (id) => {
         const result = await fetch(`/api/projects/${id}/`, { 
-            method: "DELETE" 
+          method: "DELETE" 
         });
         if (result.ok) {
-            setProjects(projects.filter(p => p.id !== id)); // what are the actual IDs and do they get reset after deleting?
+          setProjects(projects.filter(p => p.project_id !== id)); // what are the actual IDs and do they get reset after deleting?
+
+          // exit out of all the dialogs
+          setPreviewDialog(false);
+          setDeleteDialog(false);
         }
     };
 
@@ -87,19 +92,34 @@ function Projects() {
         });
         if (result.ok) {
             const updatedProject = await result.json(); // extract the JSON portion of the updated project
-            setProjects(projects.map(p => p.id === id ? updatedProject : p)); // keep everything same, update affected id
+            setProjects(projects.map(p => p.project_id === id ? updatedProject : p)); // keep everything same, update affected id
         }
     }
 
     // helper functions
     const handleCardClick = (project) => {
         setSelectedProject(project);
-        setPreviewOpen(true);
+        setPreviewDialog(true);
     }
 
     const handleViewDetails = (projectId) => {
         navigate(`/projects/${projectId}`);
     }
+
+    const handleDeleteClick = () => {
+      setDeleteDialog(true);
+    }
+
+    const formatDate = (dateString) => {
+      if (!dateString) return 'N/A';
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
     
     const getStatusColor = (status) => {
         switch (status) {
@@ -114,206 +134,228 @@ function Projects() {
         }
     }
 
-    // // each project shows its item and takes care of it's own state
-    // function ProjectItem({ project, onUpdate, onDelete }) {
-    //     const [editName, setEditName] = useState("");
-
-    //     return (
-    //         <li>
-    //             <span>{project.title}</span>
-    //             <input
-    //                 value={editName}
-    //                 onChange={(e) => setEditName(e.target.value)}
-    //             />
-    //             <button onClick={() => onUpdate(project.id, { title: editName })}>
-    //                 Update Name
-    //             </button>
-    //             <button onClick={() => onDelete(project.id)}>Delete</button>
-    //         </li>
-    //     );
-    // }
-
     return (
         <Box sx={{ p: 3 }}>
-        <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Box>
-            <Typography variant="h4" component="h1" sx={{ fontWeight: 700, mb: 1 }}>
-                Projects
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-                Manage and track your project portfolio
-            </Typography>
+            {/* Header */}
+            <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Box>
+                <Typography variant="h4" component="h1" sx={{ fontWeight: 700, mb: 1 }}>
+                    Projects
+                </Typography>
+                <Typography variant="body1" color="text.secondary">
+                    Manage and track your project portfolio
+                </Typography>
+                </Box>
+                <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => setCreateDialog(true)}
+                    sx={{ borderRadius: 2, px: 3 }}
+                >
+                    New Project
+                </Button>
             </Box>
-            <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setCreateDialogOpen(true)}
-            sx={{ borderRadius: 2, px: 3 }}
+
+        {/* Box Grid to fit Projects */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              md: "repeat(3, 1fr)",
+              lg: "repeat(3, 1fr)",
+            },
+            gap: 2,
+            mt: 2,
+          }}
+        >
+          {projects.map((project) => (
+            <Card
+              key={project.project_id}
+              sx={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+                "&:hover": {
+                  transform: "translateY(-4px)",
+                  boxShadow: 6,
+                },
+                borderRadius: 3,
+                border: "1px solid",
+                borderColor: "divider",
+              }}
+              onClick={() => handleCardClick(project)}
             >
-            New Project
-            </Button>
+              <CardHeader
+                avatar={
+                  <Avatar sx={{ bgcolor: "primary.main" }}>
+                    <ProjectIcon />
+                  </Avatar>
+                }
+                title={
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    {project.name}
+                  </Typography>
+                }
+                subheader={
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
+                    <TimeIcon fontSize="small" color="action" />
+                    <Typography variant="caption" color="text.secondary">
+                      {project.last_modified ? formatDate(project.last_modified) : 'N/A'}
+                    </Typography>
+                  </Box>
+                }
+              />
+              <CardContent sx={{ flexGrow: 1, pt: 0 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {project.description}
+                </Typography>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Chip
+                    label={project.status}
+                    color={getStatusColor(project.status)}
+                    size="small"
+                    sx={{ borderRadius: 1 }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    {project.progress}% complete
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          ))}
         </Box>
 
-        <Grid container spacing={3}>
-            {projects.map((project) => (
-            <Grid item xs={12} sm={6} md={4} key={project.id}>
-                <Card
-                sx={{
-                    height: "100%",
-                    display: "flex",
-                    flexDirection: "column",
-                    cursor: "pointer",
-                    transition: "all 0.3s ease",
-                    "&:hover": {
-                    transform: "translateY(-4px)",
-                    boxShadow: 6,
-                    },
-                    borderRadius: 3,
-                    border: "1px solid",
-                    borderColor: "divider",
-                }}
-                onClick={() => handleCardClick(project)}
-                >
-                <CardHeader
-                    avatar={
-                    <Avatar sx={{ bgcolor: "primary.main" }}>
-                        <ProjectIcon />
-                    </Avatar>
-                    }
-                    title={
-                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                        {project.title}
-                    </Typography>
-                    }
-                    subheader={
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
-                        <TimeIcon fontSize="small" color="action" />
-                        <Typography variant="caption" color="text.secondary">
-                        {project.lastModified}
-                        </Typography>
-                    </Box>
-                    }
-                />
-                <CardContent sx={{ flexGrow: 1, pt: 0 }}>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    {project.description}
-                    </Typography>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Chip
-                        label={project.status}
-                        color={getStatusColor(project.status)}
-                        size="small"
-                        sx={{ borderRadius: 1 }}
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                        {project.progress}% complete
-                    </Typography>
-                    </Box>
-                </CardContent>
-                </Card>
-            </Grid>
-            ))}
-        </Grid>
-
+        {/* Preview Dialog */}
         <Dialog
-            open={previewOpen}
-            onClose={() => setPreviewOpen(false)}
-            maxWidth="md"
-            fullWidth
-            TransitionComponent={Fade}
-            BackdropComponent={Backdrop}
-            BackdropProps={{
+          open={previewDialog}
+          onClose={() => setPreviewDialog(false)}
+          maxWidth="md"
+          fullWidth
+          TransitionComponent={Fade}
+          BackdropComponent={Backdrop}
+          BackdropProps={{
             sx: { backgroundColor: "rgba(0, 0, 0, 0.7)" },
-            }}
-            slotProps={{
-                paper: {
-                    sx: { borderRadius: 3, minHeight: 400 },
-                }
-            }}
+          }}
+          PaperProps={{
+            sx: { borderRadius: 3, minHeight: 400 },
+          }}
         >
-            {selectedProject && (
+          {selectedProject && (
             <>
-                <DialogTitle sx={{ pb: 1 }}>
+              <DialogTitle sx={{ pb: 1 }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                    <Avatar sx={{ bgcolor: "primary.main" }}>
+                  <Avatar sx={{ bgcolor: "primary.main" }}>
                     <ProjectIcon />
-                    </Avatar>
-                    <Box>
+                  </Avatar>
+                  <Box>
                     <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                        {selectedProject.title}
+                      {selectedProject.name}
                     </Typography>
                     <Chip
-                        label={selectedProject.status}
-                        color={getStatusColor(selectedProject.status)}
-                        size="small"
-                        sx={{ mt: 1 }}
+                      label={selectedProject.status}
+                      color={getStatusColor(selectedProject.status)}
+                      size="small"
+                      sx={{ mt: 1 }}
                     />
-                    </Box>
+                  </Box>
                 </Box>
-                </DialogTitle>
-                <DialogContent>
+              </DialogTitle>
+              <DialogContent>
                 <Typography variant="body1" sx={{ mb: 3 }}>
-                    {selectedProject.description}
+                  {selectedProject.description}
                 </Typography>
                 <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
-                    <Typography variant="body2" color="text.secondary">
-                    <strong>Last Modified:</strong> {selectedProject.lastModified}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" color="text.secondary">
+                    <strong>Last Modified:</strong> {selectedProject.last_modified ? formatDate(selectedProject.last_modified) : 'N/A'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
                     <strong>Progress:</strong> {selectedProject.progress}%
-                    </Typography>
+                  </Typography>
                 </Box>
-                </DialogContent>
-                <DialogActions sx={{ p: 3, gap: 1 }}>
-                <Button onClick={() => setPreviewOpen(false)} color="inherit">
-                    Close
-                </Button>
-                <Button onClick={() => deleteProject(selectedProject.id)} color="error" startIcon={<DeleteIcon />}>
-                    Delete
+              </DialogContent>
+              <DialogActions sx={{ p: 3, gap: 1 }}>
+                <Button onClick={handleDeleteClick} color="error" startIcon={<DeleteIcon />}>
+                  Delete
                 </Button>
                 <Button
-                    onClick={() => handleViewDetails(selectedProject.id)}
-                    variant="contained"
-                    startIcon={<ViewIcon />}
-                    sx={{ borderRadius: 2 }}
+                  onClick={() => handleViewDetails(selectedProject.project_id)}
+                  variant="contained"
+                  startIcon={<ViewIcon />}
+                  sx={{ borderRadius: 2 }}
                 >
-                    View Details
+                  View Details
                 </Button>
-                </DialogActions>
+              </DialogActions>
             </>
-            )}
+          )}
         </Dialog>
 
+        {/* Delete Confirmation Dialog */}
         <Dialog
-            open={createDialogOpen}
-            onClose={() => setCreateDialogOpen(false)}
-            maxWidth="sm"
-            fullWidth
-            PaperProps={{
+          open={deleteDialog}
+          onClose={() => setDeleteDialog(false)}
+          maxWidth="xs"
+          fullWidth
+          PaperProps={{
             sx: { borderRadius: 3 },
-            }}
+          }}
         >
-            <DialogTitle>Create New Project</DialogTitle>
-            <DialogContent>
-            <TextField
-                autoFocus
-                margin="dense"
-                label="Project Name"
-                fullWidth
-                variant="outlined"
-                value={newProjectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                sx={{ mt: 2 }}
-            />
-            </DialogContent>
-            <DialogActions sx={{ p: 3 }}>
-            <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-            <Button onClick={createProject} variant="contained" sx={{ borderRadius: 2 }}>
-                Create Project
+          <DialogTitle>Confirm Delete</DialogTitle>
+          <DialogContent>
+            <Typography variant="body1">
+              Are you sure you want to delete "{selectedProject?.name}"? This action cannot be undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ p: 3, gap: 1 }}>
+            <Button onClick={() => setDeleteDialog(false)} color="inherit">
+              Cancel
             </Button>
-            </DialogActions>
+            <Button
+              onClick={() => deleteProject(selectedProject?.id)}
+              color="error"
+              variant="contained"
+              startIcon={<DeleteIcon />}
+            >
+              Yes, Delete
+            </Button>
+          </DialogActions>
         </Dialog>
-        </Box>
+
+        {/* Create Project Dialog */}
+        <Dialog
+          open={createDialog}
+          onClose={() => setCreateDialog(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: { borderRadius: 3 },
+          }}
+        >
+          <DialogTitle>Create New Project</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Project Name"
+              fullWidth
+              variant="outlined"
+              value={newProjectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              sx={{ mt: 2 }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ p: 3 }}>
+            <Button onClick={() => setCreateDialog(false)}>Cancel</Button>
+            <Button onClick={createProject} variant="contained" sx={{ borderRadius: 2 }}>
+              Create Project
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
     );
 }
 

@@ -1,31 +1,50 @@
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
 from rest_framework import generics
-from django.contrib.auth.models import User
-from django.shortcuts import render
-from .serializer import UserSerializer, ProjectSerializer
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import Project
+from rest_framework import viewsets
 
+from django.contrib.auth.models import User
+from .serializer import UserSerializer, ProjectSerializer
+
+from .models import Project, EmissionScope, LCAProduct
+from .serializer import ProjectSerializer, EmissionScopeSerializer, LCAProductSerializer
+
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
 class CreateUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny] # Non authenticated users can also create
 
-# GET all projects and POST projects
-class CreateProjectList(generics.ListCreateAPIView):
+# # GET all projects and POST projects
+# class CreateProjectList(generics.ListCreateAPIView):
+#     queryset = Project.objects.all()
+#     serializer_class = ProjectSerializer
+#     permission_classes = [AllowAny]
+
+# # GET, UPDATE and DELETE singular projects
+# class CreateProjectDetail(generics.RetrieveUpdateDestroyAPIView):
+#     queryset = Project.objects.all()
+#     serializer_class = ProjectSerializer
+#     permission_classes = [AllowAny]
+
+class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
+    lookup_field = "project_id"
     permission_classes = [AllowAny]
 
-# GET, UPDATE and DELETE singular projects
-class CreateProjectDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Project.objects.all()
-    serializer_class = ProjectSerializer
+
+class EmissionScopeViewSet(viewsets.ModelViewSet):
+    queryset = EmissionScope.objects.all()
+    serializer_class = EmissionScopeSerializer
+    lookup_field = "scope_id"
     permission_classes = [AllowAny]
 
+class LCAProductViewSet(viewsets.ModelViewSet):
+    queryset = LCAProduct.objects.all()
+    serializer_class = LCAProductSerializer
+    lookup_field = "lca_id"
+    permission_classes = [AllowAny]
+    
 # DEPRECATED CRUD
 
 # @api_view(['GET']) # Reading data

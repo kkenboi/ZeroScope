@@ -1,7 +1,9 @@
-from django.urls import path
-from .import views
+from rest_framework.routers import DefaultRouter
+from .views import ProjectViewSet, EmissionScopeViewSet, LCAProductViewSet
 
-urlpatterns = [
-    path("projects/", views.CreateProjectList.as_view(), name="project-list"),
-    path("projects/<int:pk>/", views.CreateProjectDetail.as_view(), name="project-detail"),
-]
+router = DefaultRouter()
+router.register(r'projects', ProjectViewSet)
+router.register(r'scopes', EmissionScopeViewSet)
+router.register(r'lca-products', LCAProductViewSet)
+
+urlpatterns = router.urls
