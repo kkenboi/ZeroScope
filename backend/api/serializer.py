@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Project, EmissionScope, LCAProduct
+from .models import Project
+from .models import EmissionScope, EmissionFactor, EmissionActivity
+from .models import LCAProduct
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -16,6 +18,21 @@ class EmissionScopeSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmissionScope
         fields = ["scope_id", "scope_number", "total_emissions_tco2e"]
+
+class EmissionFactorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmissionFactor
+        fields = "__all__"
+
+
+class EmissionActivitySerializer(serializers.ModelSerializer):
+    factor = EmissionFactorSerializer(read_only=True)
+    factor_id = serializers.UUIDField(write_only=True)
+
+    class Meta:
+        model = EmissionActivity
+        fields = ["activity_id", "project", "scope", "description", "quantity", "unit",
+                  "factor", "factor_id", "calculated_emissions"]
 
 
 class LCAProductSerializer(serializers.ModelSerializer):

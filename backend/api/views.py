@@ -4,8 +4,20 @@ from rest_framework import viewsets
 from django.contrib.auth.models import User
 from .serializer import UserSerializer, ProjectSerializer
 
-from .models import Project, EmissionScope, LCAProduct
-from .serializer import ProjectSerializer, EmissionScopeSerializer, LCAProductSerializer
+from .models import Project
+from .models import EmissionScope, EmissionFactor, EmissionActivity
+from .models import LCAProduct
+from .serializer import ProjectSerializer
+from .serializer import EmissionScopeSerializer, EmissionFactorSerializer, EmissionActivitySerializer
+from .serializer import LCAProductSerializer
+
+from .utils.sefr_importer import SEFRExcelImporter
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework import status
+from django.core.files.storage import default_storage
+import os
 
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
@@ -38,12 +50,72 @@ class EmissionScopeViewSet(viewsets.ModelViewSet):
     serializer_class = EmissionScopeSerializer
     lookup_field = "scope_id"
     permission_classes = [AllowAny]
+    
+class EmissionFactorViewSet(viewsets.ModelViewSet):
+    queryset = EmissionFactor.objects.all()
+    serializer_class = EmissionFactorSerializer
+    lookup_field = "factor_id"
+    permission_classes = [AllowAny]
+
+class EmissionActivityViewSet(viewsets.ModelViewSet):
+    queryset = EmissionActivity.objects.all()
+    serializer_class = EmissionActivitySerializer
+    lookup_field = "activity_id"
+    permission_classes = [AllowAny]
 
 class LCAProductViewSet(viewsets.ModelViewSet):
     queryset = LCAProduct.objects.all()
     serializer_class = LCAProductSerializer
     lookup_field = "lca_id"
     permission_classes = [AllowAny]
+    
+    
+    
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def upload_sefr_excel(request):
+    """API endpoint to upload and import SEFR Excel file"""
+    
+    if 'file' not in request.FILES:
+        return Response(
+            {'error': 'No file provided'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    file = request.FILES['file']
+    
+    # Validate file type
+    if not file.name.endswith(('.xlsx', '.xls')):
+        return Response(
+            {'error': 'File must be Excel format (.xlsx or .xls)'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Save file temporarily
+        file_path = default_storage.save(f'temp/{file.name}', file)
+        full_path = default_storage.path(file_path)
+        
+        # Import data
+        importer = SEFRExcelImporter(full_path)
+        success = importer.import_data()
+        summary = importer.get_import_summary()
+        
+        # Clean up temp file
+        os.remove(full_path)
+        
+        return Response({
+            'success': success,
+            'summary': summary
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Import failed: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
     
 # DEPRECATED CRUD
 
