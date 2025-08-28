@@ -11,6 +11,7 @@ import EnvironmentalDashboard from "./pages/Dashboard"
 import Reports from "./pages/Reports"
 import Projects from "./pages/Projects"
 import ProjectDetails from "./pages/ProjectDetails"
+import Data from "./pages/Data"
 
 // Ultra-modern minimalist theme
 const theme = createTheme({
@@ -243,6 +244,7 @@ function App() {
             <Route path="/register" element={<RegisterAndLogout />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:projectID" element={<ProjectDetails />} />
+            <Route path="/data" element={<Data />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

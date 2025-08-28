@@ -48,6 +48,10 @@ const Layout = ({ children }) => {
       path: "/projects",
     },
     {
+      text: "Data",
+      path: "/data",
+    },
+    {
       text: "Reports",
       path: "/reports",
     },
