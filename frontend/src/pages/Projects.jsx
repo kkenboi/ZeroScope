@@ -43,7 +43,11 @@ function Projects() {
     useEffect(() => {
         fetch("/api/projects/") // adjust to your backend URL
         .then(res => res.json())
-        .then(data => setProjects(data));
+        .then(data => {
+            // If paginated, use data.results; else, use data directly
+            setProjects(Array.isArray(data) ? data : (data.results || []));
+        })
+        .catch(() => setProjects([]));
     }, []);
 
     // Create a new project
@@ -171,63 +175,64 @@ function Projects() {
             mt: 2,
           }}
         >
-          {projects.map((project) => (
-            <Card
-              key={project.project_id}
-              sx={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                cursor: "pointer",
-                transition: "all 0.3s ease",
-                "&:hover": {
-                  transform: "translateY(-4px)",
-                  boxShadow: 6,
-                },
-                borderRadius: 3,
-                border: "1px solid",
-                borderColor: "divider",
-              }}
-              onClick={() => handleCardClick(project)}
-            >
-              <CardHeader
-                avatar={
-                  <Avatar sx={{ bgcolor: "primary.main" }}>
-                    <ProjectIcon />
-                  </Avatar>
-                }
-                title={
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    {project.name}
+          { projects.map((project) => (
+              <Card
+                key={project.project_id}
+                sx={{
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  cursor: "pointer",
+                  transition: "all 0.3s ease",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: 6,
+                  },
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                }}
+                onClick={() => handleCardClick(project)}
+              >
+                <CardHeader
+                  avatar={
+                    <Avatar sx={{ bgcolor: "primary.main" }}>
+                      <ProjectIcon />
+                    </Avatar>
+                  }
+                  title={
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {project.name}
+                    </Typography>
+                  }
+                  subheader={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
+                      <TimeIcon fontSize="small" color="action" />
+                      <Typography variant="caption" color="text.secondary">
+                        {project.last_modified ? formatDate(project.last_modified) : 'N/A'}
+                      </Typography>
+                    </Box>
+                  }
+                />
+                <CardContent sx={{ flexGrow: 1, pt: 0 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {project.description}
                   </Typography>
-                }
-                subheader={
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
-                    <TimeIcon fontSize="small" color="action" />
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Chip
+                      label={project.status}
+                      color={getStatusColor(project.status)}
+                      size="small"
+                      sx={{ borderRadius: 1 }}
+                    />
                     <Typography variant="caption" color="text.secondary">
-                      {project.last_modified ? formatDate(project.last_modified) : 'N/A'}
+                      {project.progress}% complete
                     </Typography>
                   </Box>
-                }
-              />
-              <CardContent sx={{ flexGrow: 1, pt: 0 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  {project.description}
-                </Typography>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <Chip
-                    label={project.status}
-                    color={getStatusColor(project.status)}
-                    size="small"
-                    sx={{ borderRadius: 1 }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {project.progress}% complete
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))
+          }
         </Box>
 
         {/* Preview Dialog */}

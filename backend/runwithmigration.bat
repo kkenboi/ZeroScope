@@ -1,0 +1,6 @@
+@echo off
+echo Running makemigrations and installing dependencies...
+docker-compose run --rm django sh -c "pip install -r requirements.txt && python manage.py makemigrations"
+
+echo Migrations completed. Starting containers...
+docker-compose up

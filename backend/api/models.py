@@ -76,7 +76,7 @@ class EmissionFactor(models.Model):
     description = models.TextField(blank=True, null=True)  # Maps to "Description"
     
     # Emission factor details
-    emission_factor_co2e = models.DecimalField(max_digits=15, decimal_places=10)  # Maps to "EF (kg CO2-eq per unit)"
+    emission_factor_co2e = models.DecimalField(max_digits=20, decimal_places=5)  # Maps to "EF (kg CO2-eq per unit)"
     base_unit = models.CharField(max_length=100)  # Maps to "Unit" (can be complex like "m3/hr", "Refrigerant Tonne")
     
     # Source and metadata from SEFR

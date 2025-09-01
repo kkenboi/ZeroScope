@@ -1,7 +1,9 @@
 import pandas as pd
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from django.core.exceptions import ValidationError
 from api.models import EmissionFactor
+from decimal import Decimal
+
 
 class SEFRExcelImporter:
     """
@@ -98,7 +100,8 @@ class SEFRExcelImporter:
                 'category': category,
                 'sub_category': row.get('Sub-Category'),
                 'description': row.get('Description'),
-                'emission_factor_co2e': Decimal(str(row['EF (kg CO2-eq per unit)'])),
+                'emission_factor_co2e': Decimal(str(row['EF (kg CO2-eq per unit)'])).quantize(
+                    Decimal('0.01'), rounding=ROUND_DOWN),                
                 'base_unit': row['Unit'],
                 'source': 'sefr',
                 'year': int(row['Year']) if pd.notna(row.get('Year')) else None,

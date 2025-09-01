@@ -1,6 +1,9 @@
 from rest_framework import generics
 from rest_framework import viewsets
 
+from django.conf import settings
+from django.http import JsonResponse
+
 from django.contrib.auth.models import User
 from .serializer import UserSerializer, ProjectSerializer
 
@@ -14,6 +17,7 @@ from .serializer import LCAProductSerializer
 from .utils.sefr_importer import SEFRExcelImporter
 
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from django.core.files.storage import default_storage
@@ -25,6 +29,7 @@ class CreateUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny] # Non authenticated users can also create
+
 
 # # GET all projects and POST projects
 # class CreateProjectList(generics.ListCreateAPIView):
@@ -56,6 +61,13 @@ class EmissionFactorViewSet(viewsets.ModelViewSet):
     serializer_class = EmissionFactorSerializer
     lookup_field = "factor_id"
     permission_classes = [AllowAny]
+    
+    @action(detail=False, methods=['delete'])
+    def delete_all(self, request):
+        count = EmissionFactor.objects.count()
+        EmissionFactor.objects.all().delete()
+        return Response({'message': f'Deleted {count} emission factors'}, status=status.HTTP_200_OK)
+
 
 class EmissionActivityViewSet(viewsets.ModelViewSet):
     queryset = EmissionActivity.objects.all()
@@ -68,10 +80,17 @@ class LCAProductViewSet(viewsets.ModelViewSet):
     serializer_class = LCAProductSerializer
     lookup_field = "lca_id"
     permission_classes = [AllowAny]
-    
-    
-    
 
+
+# views.py
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_settings(request):  # Add request parameter
+    data = {
+        'PAGE_SIZE': settings.REST_FRAMEWORK['PAGE_SIZE'],
+    }
+    return Response(data, status=status.HTTP_200_OK)
+    
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def upload_sefr_excel(request):
@@ -116,6 +135,11 @@ def upload_sefr_excel(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+@api_view(['DELETE'])
+@permission_classes([AllowAny])
+def delete_all_emission_factors(request):
+    EmissionFactor.objects.all().delete()
+    return Response({'message': 'All emission factors deleted.'}, status=status.HTTP_200_OK)
     
 # DEPRECATED CRUD
 
