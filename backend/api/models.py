@@ -3,6 +3,8 @@ from django.utils import timezone
 from django.db import models
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
+from decimal import Decimal
+
 
 class Project(models.Model):
     project_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -160,6 +162,26 @@ class EmissionActivity(models.Model):
     unit = models.CharField(max_length=50)  # Should match factor's base_unit
     emission_factor = models.ForeignKey(EmissionFactor, on_delete=models.CASCADE, related_name="activities")
     
+    # Optional: Scope 3 category (GHG Protocol)
+    SCOPE3_CATEGORY_CHOICES = [
+        ("purchased_goods_services", "1. Purchased goods and services"),
+        ("capital_goods", "2. Capital goods"),
+        ("fuel_energy_related", "3. Fuel- and energy-related activities"),
+        ("upstream_transport", "4. Upstream transportation and distribution"),
+        ("waste_generated", "5. Waste generated in operations"),
+        ("business_travel", "6. Business travel"),
+        ("employee_commuting", "7. Employee commuting"),
+        ("leased_assets_upstream", "8. Upstream leased assets"),
+        ("downstream_transport", "9. Downstream transportation and distribution"),
+        ("processing_sold_products", "10. Processing of sold products"),
+        ("use_sold_products", "11. Use of sold products"),
+        ("end_of_life", "12. End-of-life treatment of sold products"),
+        ("leased_assets_downstream", "13. Downstream leased assets"),
+        ("franchises", "14. Franchises"),
+        ("investments", "15. Investments"),
+    ]
+    scope3_category = models.CharField(max_length=64, blank=True, null=True, choices=SCOPE3_CATEGORY_CHOICES)
+    
     # Results
     calculated_emissions = models.DecimalField(max_digits=15, decimal_places=6, default=0)  # in tCO2e
     
@@ -168,22 +190,26 @@ class EmissionActivity(models.Model):
     last_modified = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        # Validate units match
         if self.unit != self.emission_factor.base_unit:
-            raise ValueError(f"Unit mismatch: Activity uses {self.unit} but factor uses {self.emission_factor.base_unit}")
-        
-        # Calculate emissions: quantity × final_co2e_factor
-        # SEFR factors are already in kg CO2e, convert to tonnes
-        self.calculated_emissions = (
-            self.quantity * self.emission_factor.final_co2e_factor / 1000  # Convert kg to tonnes
-        )
+            raise ValueError(
+                f"Unit mismatch: Activity uses {self.unit} but factor uses {self.emission_factor.base_unit}"
+            )
+
+        qty_value = Decimal(self.quantity or 0)
+        factor_value = Decimal(self.emission_factor.final_co2e_factor or 0)
+
+        # kg → tonnes
+        self.calculated_emissions = (qty_value * factor_value) / Decimal("1000")
+
         super().save(*args, **kwargs)
-        
-        # Update scope total after saving
-        self.scope.calculate_total_emissions()
+
+        # update scope total
+        if self.scope:
+            self.scope.calculate_total_emissions()
 
     def __str__(self):
         return f"{self.activity_name} - {self.calculated_emissions} tCO₂e"
+
 
 
 class LCAProduct(models.Model):

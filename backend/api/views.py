@@ -68,7 +68,6 @@ class EmissionFactorViewSet(viewsets.ModelViewSet):
         EmissionFactor.objects.all().delete()
         return Response({'message': f'Deleted {count} emission factors'}, status=status.HTTP_200_OK)
 
-
 class EmissionActivityViewSet(viewsets.ModelViewSet):
     queryset = EmissionActivity.objects.all()
     serializer_class = EmissionActivitySerializer
@@ -140,7 +139,14 @@ def upload_sefr_excel(request):
 def delete_all_emission_factors(request):
     EmissionFactor.objects.all().delete()
     return Response({'message': 'All emission factors deleted.'}, status=status.HTTP_200_OK)
-    
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def emission_factors_all(request):
+    factors = EmissionFactor.objects.all()
+    serializer = EmissionFactorSerializer(factors, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
 # DEPRECATED CRUD
 
 # @api_view(['GET']) # Reading data
