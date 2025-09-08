@@ -15,9 +15,138 @@ class UserSerializer(serializers.ModelSerializer):
         return user       
 
 class EmissionFactorSerializer(serializers.ModelSerializer):
+    """Base serializer for emission factors with full validation"""
+    scope = serializers.ReadOnlyField()
+    scope_display = serializers.ReadOnlyField()
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    valid_units = serializers.SerializerMethodField()
+
     class Meta:
         model = EmissionFactor
-        fields = "__all__"
+        fields = [
+            'factor_id', 'name', 'category', 'category_display', 'scope', 'scope_display',
+            'emission_factor_value', 'unit', 'valid_units', 'source', 'year',
+            'description', 'sub_category', 'entry_type', 'guided_parameters',
+            'created_date', 'last_modified'
+        ]
+        read_only_fields = ['factor_id', 'created_date', 'last_modified', 'scope', 'scope_display']
+
+    def get_valid_units(self, obj):
+        """Return valid units for this category"""
+        return EmissionFactor.get_valid_units_for_category(obj.category)
+
+    def validate(self, attrs):
+        """Comprehensive validation"""
+        category = attrs.get('category')
+        unit = attrs.get('unit')
+        
+        # Unit-category validation
+        if category and unit:
+            if not EmissionFactor.validate_unit_for_category(category, unit):
+                valid_units = EmissionFactor.get_valid_units_for_category(category)
+                raise serializers.ValidationError({
+                    'unit': f"Unit '{unit}' is not valid for category '{category}'. "
+                           f"Valid units are: {', '.join(valid_units)}"
+                })
+        
+        return attrs
+
+
+class SimpleEmissionFactorSerializer(EmissionFactorSerializer):
+    """Simplified serializer for direct emission factor entry"""
+    
+    class Meta(EmissionFactorSerializer.Meta):
+        fields = [
+            'factor_id', 'name', 'category', 'category_display', 'scope', 'scope_display',
+            'emission_factor_value', 'unit', 'valid_units', 'source', 'year',
+            'description', 'sub_category', 'created_date', 'last_modified'
+        ]
+    
+    def create(self, validated_data):
+        """Create emission factor with simple entry type"""
+        validated_data['entry_type'] = 'simple'
+        return super().create(validated_data)
+
+
+class GuidedEmissionFactorSerializer(EmissionFactorSerializer):
+    """Enhanced serializer for guided emission factor entry with category-specific validation"""
+    
+    class Meta(EmissionFactorSerializer.Meta):
+        fields = EmissionFactorSerializer.Meta.fields  # Include all fields including guided_parameters
+    
+    def create(self, validated_data):
+        """Create emission factor with guided entry type"""
+        validated_data['entry_type'] = 'guided'
+        return super().create(validated_data)
+    
+    def validate(self, attrs):
+        """Enhanced validation including guided parameters"""
+        attrs = super().validate(attrs)
+        
+        category = attrs.get('category')
+        guided_params = attrs.get('guided_parameters', {})
+        
+        # Category-specific guided parameter validation
+        if category and guided_params:
+            self._validate_guided_parameters(category, guided_params)
+        
+        return attrs
+    
+    def _validate_guided_parameters(self, category, guided_params):
+        """Validate guided parameters based on category"""
+        
+        # Fuel combustion validation
+        if category == 'fuel_combustion':
+            required_params = ['fuel_type', 'measurement_type']
+            for param in required_params:
+                if param not in guided_params:
+                    raise serializers.ValidationError({
+                        'guided_parameters': f'{param} is required for fuel combustion category'
+                    })
+        
+        # Transportation validation (business travel, employee commuting)
+        elif category in ['business_travel', 'employee_commuting']:
+            if 'transport_mode' not in guided_params:
+                raise serializers.ValidationError({
+                    'guided_parameters': 'transport_mode is required for transportation categories'
+                })
+        
+        # Transport distribution validation
+        elif category in ['upstream_transport', 'downstream_transport']:
+            required_params = ['transport_mode', 'transport_type']
+            for param in required_params:
+                if param not in guided_params:
+                    raise serializers.ValidationError({
+                        'guided_parameters': f'{param} is required for transport distribution categories'
+                    })
+        
+        # Electricity consumption validation
+        elif category == 'electricity_consumption':
+            if 'grid_region' not in guided_params:
+                raise serializers.ValidationError({
+                    'guided_parameters': 'grid_region is required for electricity consumption'
+                })
+
+
+class CategoryInfoSerializer(serializers.Serializer):
+    """Serializer for category information with valid units"""
+    category = serializers.CharField()
+    category_label = serializers.CharField()
+    scope = serializers.IntegerField()
+    valid_units = serializers.ListField(child=serializers.CharField())
+
+
+class UnitValidationSerializer(serializers.Serializer):
+    """Serializer for unit validation requests"""
+    category = serializers.CharField()
+    unit = serializers.CharField()
+    
+    def validate_category(self, value):
+        """Validate that category exists"""
+        valid_categories = [choice[0] for choice in EmissionFactor.CATEGORY_CHOICES]
+        if value not in valid_categories:
+            raise serializers.ValidationError(f"Invalid category. Valid options: {', '.join(valid_categories)}")
+        return value
 
 class EmissionScopeSerializer(serializers.ModelSerializer):
     class Meta:

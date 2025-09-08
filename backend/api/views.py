@@ -7,21 +7,16 @@ from django.http import JsonResponse
 from django.contrib.auth.models import User
 from .serializer import UserSerializer, ProjectSerializer
 
-from .models import Project
-from .models import EmissionScope, EmissionFactor, EmissionActivity
-from .models import LCAProduct
-from .serializer import ProjectSerializer
+from .models import Project, EmissionScope, EmissionFactor, EmissionActivity, LCAProduct
 from .serializer import EmissionScopeSerializer, EmissionFactorSerializer, EmissionActivitySerializer
+from .serializer import SimpleEmissionFactorSerializer, GuidedEmissionFactorSerializer
+from .serializer import CategoryInfoSerializer, UnitValidationSerializer
 from .serializer import LCAProductSerializer
-
-from .utils.sefr_importer import SEFRExcelImporter
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
-from django.core.files.storage import default_storage
-import os
 
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
@@ -57,16 +52,218 @@ class EmissionScopeViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     
 class EmissionFactorViewSet(viewsets.ModelViewSet):
+    """
+    Clean, user-focused emission factor management.
+    Supports both simple and guided entry workflows.
+    """
     queryset = EmissionFactor.objects.all()
     serializer_class = EmissionFactorSerializer
     lookup_field = "factor_id"
     permission_classes = [AllowAny]
     
+    def get_queryset(self):
+        """Filter emission factors based on query parameters"""
+        queryset = EmissionFactor.objects.all()
+        
+        # Filter by category
+        category = self.request.query_params.get('category')
+        if category:
+            queryset = queryset.filter(category=category)
+        
+        # Filter by scope
+        scope = self.request.query_params.get('scope')
+        if scope:
+            valid_categories = [
+                cat[0] for cat in EmissionFactor.CATEGORY_CHOICES
+                if EmissionFactor.CATEGORY_SCOPES.get(cat[0]) == int(scope)
+            ]
+            queryset = queryset.filter(category__in=valid_categories)
+        
+        # Filter by year
+        year = self.request.query_params.get('year')
+        if year:
+            queryset = queryset.filter(year=year)
+        
+        # Filter by source
+        source = self.request.query_params.get('source')
+        if source:
+            queryset = queryset.filter(source__icontains=source)
+        
+        return queryset.order_by('category', 'name')
+    
+    @action(detail=False, methods=['post'])
+    def simple_entry(self, request):
+        """Create emission factor using simple entry workflow"""
+        serializer = SimpleEmissionFactorSerializer(data=request.data)
+        if serializer.is_valid():
+            emission_factor = serializer.save()
+            return Response(
+                EmissionFactorSerializer(emission_factor).data, 
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'])
+    def guided_entry(self, request):
+        """Create emission factor using guided entry workflow"""
+        serializer = GuidedEmissionFactorSerializer(data=request.data)
+        if serializer.is_valid():
+            emission_factor = serializer.save()
+            return Response(
+                EmissionFactorSerializer(emission_factor).data, 
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """Get all categories with their information"""
+        categories_info = []
+        
+        for category_key, category_label in EmissionFactor.CATEGORY_CHOICES:
+            scope = EmissionFactor.CATEGORY_SCOPES.get(category_key)
+            valid_units = EmissionFactor.get_valid_units_for_category(category_key)
+            
+            categories_info.append({
+                'category': category_key,
+                'category_label': category_label,
+                'scope': scope,
+                'valid_units': valid_units
+            })
+        
+        return Response(categories_info)
+    
+    @action(detail=False, methods=['get'])
+    def scopes(self, request):
+        """Get categories organized by scope"""
+        scopes = {1: [], 2: [], 3: []}
+        
+        for category_key, category_label in EmissionFactor.CATEGORY_CHOICES:
+            scope = EmissionFactor.CATEGORY_SCOPES.get(category_key)
+            if scope:
+                scopes[scope].append({
+                    'category': category_key,
+                    'category_label': category_label,
+                    'valid_units': EmissionFactor.get_valid_units_for_category(category_key)
+                })
+        
+        return Response(scopes)
+    
+    @action(detail=False, methods=['post'])
+    def validate_unit(self, request):
+        """Validate if a unit is valid for a category"""
+        serializer = UnitValidationSerializer(data=request.data)
+        if serializer.is_valid():
+            category = serializer.validated_data['category']
+            unit = serializer.validated_data['unit']
+            
+            is_valid = EmissionFactor.validate_unit_for_category(category, unit)
+            valid_units = EmissionFactor.get_valid_units_for_category(category)
+            
+            return Response({
+                'is_valid': is_valid,
+                'category': category,
+                'unit': unit,
+                'valid_units': valid_units,
+                'message': 'Valid unit' if is_valid else f'Invalid unit. Valid options: {", ".join(valid_units)}'
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
     @action(detail=False, methods=['delete'])
     def delete_all(self, request):
+        """Delete all emission factors (admin function)"""
         count = EmissionFactor.objects.count()
         EmissionFactor.objects.all().delete()
-        return Response({'message': f'Deleted {count} emission factors'}, status=status.HTTP_200_OK)
+        return Response({
+            'message': f'Successfully deleted {count} emission factors',
+            'count': count
+        }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['post'])
+    def import_excel(self, request):
+        """Import emission factors from SEFR Excel file - Updated for clean model"""
+        
+        if 'file' not in request.FILES:
+            return Response(
+                {'error': 'No file provided'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file = request.FILES['file']
+        
+        # Validate file type
+        if not file.name.lower().endswith(('.xlsx', '.xls')):
+            return Response(
+                {'error': 'File must be Excel format (.xlsx or .xls)'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate file size (limit to 10MB)
+        if file.size > 10 * 1024 * 1024:  # 10MB
+            return Response(
+                {'error': 'File size must be less than 10MB'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            import tempfile
+            import os
+            
+            # Create temp file with proper extension
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
+                for chunk in file.chunks():
+                    temp_file.write(chunk)
+                temp_path = temp_file.name
+            
+            # Import data using updated importer
+            from .utils.sefr_importer import SEFRExcelImporter
+            importer = SEFRExcelImporter(temp_path)
+            
+            success = importer.import_data()
+            summary = importer.get_import_summary()
+            
+            # Clean up temp file
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+            
+            # Return detailed response
+            if success:
+                return Response({
+                    'success': True,
+                    'message': f'Import completed: {summary["success_count"]} imported, {summary["skipped_count"]} skipped, {summary["error_count"]} errors',
+                    'summary': summary
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Import failed - see errors for details',
+                    'summary': summary
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            # Clean up temp file if it exists
+            try:
+                if 'temp_path' in locals():
+                    os.unlink(temp_path)
+            except:
+                pass
+                
+            error_message = str(e)
+            
+            return Response({
+                'success': False,
+                'error': f'Import failed: {error_message}',
+                'summary': {
+                    'total_rows': 0,
+                    'success_count': 0,
+                    'skipped_count': 0,
+                    'error_count': 1,
+                    'errors': [error_message]
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class EmissionActivityViewSet(viewsets.ModelViewSet):
     queryset = EmissionActivity.objects.all()
@@ -81,71 +278,16 @@ class LCAProductViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
 
 
-# views.py
 @api_view(['GET'])
 @permission_classes([AllowAny])
-def get_settings(request):  # Add request parameter
+def get_settings(request):
+    """Get application settings"""
     data = {
         'PAGE_SIZE': settings.REST_FRAMEWORK['PAGE_SIZE'],
+        'AVAILABLE_SCOPES': [1, 2, 3],
+        'TOTAL_CATEGORIES': len(EmissionFactor.CATEGORY_CHOICES),
     }
     return Response(data, status=status.HTTP_200_OK)
-    
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def upload_sefr_excel(request):
-    """API endpoint to upload and import SEFR Excel file"""
-    
-    if 'file' not in request.FILES:
-        return Response(
-            {'error': 'No file provided'}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    file = request.FILES['file']
-    
-    # Validate file type
-    if not file.name.endswith(('.xlsx', '.xls')):
-        return Response(
-            {'error': 'File must be Excel format (.xlsx or .xls)'}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    try:
-        # Save file temporarily
-        file_path = default_storage.save(f'temp/{file.name}', file)
-        full_path = default_storage.path(file_path)
-        
-        # Import data
-        importer = SEFRExcelImporter(full_path)
-        success = importer.import_data()
-        summary = importer.get_import_summary()
-        
-        # Clean up temp file
-        os.remove(full_path)
-        
-        return Response({
-            'success': success,
-            'summary': summary
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response(
-            {'error': f'Import failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-@api_view(['DELETE'])
-@permission_classes([AllowAny])
-def delete_all_emission_factors(request):
-    EmissionFactor.objects.all().delete()
-    return Response({'message': 'All emission factors deleted.'}, status=status.HTTP_200_OK)
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def emission_factors_all(request):
-    factors = EmissionFactor.objects.all()
-    serializer = EmissionFactorSerializer(factors, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
 
 # DEPRECATED CRUD
 

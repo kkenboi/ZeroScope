@@ -15,7 +15,9 @@ import {
   DialogContent,
   DialogActions,
   CircularProgress,
-  Pagination
+  Pagination,
+  TextField,
+  Chip
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -23,6 +25,7 @@ import {
   UploadFile as UploadFileIcon,
   Delete as DeleteIcon
 } from "@mui/icons-material";
+import EmissionFactorEntry from "../components/EmissionFactorEntry";
 
 function Data() {
     const [importStatus, setImportStatus] = useState("");
@@ -35,6 +38,7 @@ function Data() {
     const [pageCount, setPageCount] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const [deleteAllDialog, setDeleteAllDialog] = useState(false);
+    const [addDialogOpen, setAddDialogOpen] = useState(false);
     const fileInputRef = useRef();
 
     const PAGE_SIZE = 20; // if this is changed, change the settings.py
@@ -100,23 +104,31 @@ function Data() {
             const formData = new FormData();
             formData.append("file", excelFile);
 
-            const response = await fetch("/api/import-sefr/", {
+            const response = await fetch("/api/emission-factors/import_excel/", {
                 method: "POST",
                 body: formData,
             });
+            
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error("Server returned non-JSON response. Check if backend is running.");
+            }
+            
             const data = await response.json();
-            if (response.ok) {
+            
+            if (response.ok && data.success) {
                 setImportStatus("Import successful!");
                 setImportSummary(data.summary);
                 // Reset import dialog state for next import
                 setExcelFile(null);
             } else {
-                setImportStatus("Import failed: " + (data.error || "Unknown error"));
-                setImportSummary(null);
+                setImportStatus("Import failed: " + (data.error || data.message || "Unknown error"));
+                setImportSummary(data.summary || null);
             }
         } catch (err) {
             setImportStatus("Import failed: " + err.message);
             setImportSummary(null);
+            console.error("Import error:", err);
         }
         setImportLoading(false);
     };
@@ -135,19 +147,7 @@ function Data() {
             setImportStatus("All emission factors deleted.");
             setImportSummary(null);
             setPage(1); // Reset to first page
-            // Refresh emission factors
-            fetch(`/api/emission-factors/?page=1`)
-                .then(res => res.json())
-                .then(data => {
-                    setEmissionFactors(data.results || []);
-                    setTotalCount(data.count || 0);
-                    setPageCount(Math.max(1, Math.ceil((data.count || 0) / (PAGE_SIZE || 1))));
-                })
-                .catch(() => {
-                    setEmissionFactors([]);
-                    setPageCount(1);
-                    setTotalCount(0);
-                });
+            refreshEmissionFactors();
         } else {
             setImportStatus("Failed to delete emission factors.");
         }
@@ -155,6 +155,37 @@ function Data() {
 
     const handlePageChange = (event, value) => {
         setPage(value);
+    };
+
+    // Refresh emission factors data
+    const refreshEmissionFactors = () => {
+        fetch(`/api/emission-factors/?page=${page}`)
+            .then(res => res.json())
+            .then(data => {
+                setEmissionFactors(data.results || []);
+                setTotalCount(data.count || 0);
+
+                const calculatedPageCount = Math.max(
+                    1,
+                    Math.ceil((data.count || 0) / PAGE_SIZE)
+                );
+                setPageCount(calculatedPageCount);
+
+                if (page > calculatedPageCount) {
+                    setPage(calculatedPageCount);
+                }
+            })
+            .catch(() => {
+                setEmissionFactors([]);
+                setPageCount(1);
+                setTotalCount(0);
+            });
+    };
+
+    const handleEmissionFactorSuccess = () => {
+        setImportStatus("Emission factor added successfully!");
+        setImportSummary(null);
+        refreshEmissionFactors();
     };
 
     return (
@@ -186,6 +217,14 @@ function Data() {
                     onClick={handleDeleteAllClick}
                 >
                     Delete All Emission Factors
+                </Button>
+                <Button
+                    variant="contained"
+                    onClick={() => setAddDialogOpen(true)}
+                    startIcon={<AddIcon />}
+                    sx={{ borderRadius: 2, mb: 2 }}
+                >
+                    Add Emission Factor
                 </Button>
             </Box>
 
@@ -268,6 +307,13 @@ function Data() {
                 </DialogActions>
             </Dialog>
 
+            {/* Add Emission Factor Dialog */}
+            <EmissionFactorEntry
+                open={addDialogOpen}
+                onClose={() => setAddDialogOpen(false)}
+                onSuccess={handleEmissionFactorSuccess}
+            />
+
             {/* Emission Factors Table */}
             <Box sx={{ mt: 6 }}>
               <Typography variant="h6" sx={{ mb: 2 }}>Emission Factors in Database</Typography>
@@ -277,27 +323,42 @@ function Data() {
                     <TableRow>
                       <TableCell>Name</TableCell>
                       <TableCell>Category</TableCell>
-                      <TableCell>Sub-Category</TableCell>
-                      <TableCell>CO2-eq/unit</TableCell>
+                      <TableCell>Scope</TableCell>
+                      <TableCell>EF (kgCO₂e/unit)</TableCell>
                       <TableCell>Unit</TableCell>
                       <TableCell>Year</TableCell>
                       <TableCell>Source</TableCell>
+                      <TableCell>Entry Type</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {emissionFactors.map((factor) => (
                       <TableRow key={factor.factor_id || factor.id}>
                         <TableCell>{factor.name}</TableCell>
-                        <TableCell>{factor.category}</TableCell>
-                        <TableCell>{factor.sub_category}</TableCell>
+                        <TableCell>{factor.category_display || factor.category}</TableCell>
                         <TableCell>
-                          {factor.emission_factor_co2e !== undefined && factor.emission_factor_co2e !== null
-                            ? Number(factor.emission_factor_co2e).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+                          <Chip 
+                            label={`Scope ${factor.scope}`} 
+                            size="small" 
+                            color={factor.scope === 1 ? "error" : factor.scope === 2 ? "warning" : "info"}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {factor.emission_factor_value !== undefined && factor.emission_factor_value !== null
+                            ? Number(factor.emission_factor_value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                             : ""}
                         </TableCell>
-                        <TableCell>{factor.base_unit}</TableCell>
+                        <TableCell>{factor.unit}</TableCell>
                         <TableCell>{factor.year}</TableCell>
                         <TableCell>{factor.source}</TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={factor.entry_type || 'simple'} 
+                            size="small" 
+                            variant="outlined"
+                            color={factor.entry_type === 'guided' ? "secondary" : "default"}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

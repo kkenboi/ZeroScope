@@ -380,7 +380,7 @@ function ProjectDetails() {
                 quantity: Number(a.quantity || 0),
                 unit: a.unit,
                 factor: a.emission_factor?.name || '',
-                emissions: Number(a.calculated_emissions || 0),
+                emissions: isFinite(Number(a.calculated_emissions)) ? Number(a.calculated_emissions).toFixed(3) : "",
                 scope3Category: a.scope3_category || '',
               })))
 
@@ -390,7 +390,7 @@ function ProjectDetails() {
               { field: 'quantity', headerName: 'Qty', width: 100, type: 'number' },
               { field: 'unit', headerName: 'Unit', width: 120 },
               { field: 'factor', headerName: 'Emission Factor', flex: 1, minWidth: 220 },
-              { field: 'emissions', headerName: 'tCO₂e', width: 120, type: 'number', valueFormatter: ({ value }) => Number(value).toFixed(3) },
+              { field: 'emissions', headerName: 'tCO₂e', width: 120, type: 'number' },
               { field: 'scope3Category', headerName: 'Scope 3 Category', flex: 1, minWidth: 220 },
             ]
 
