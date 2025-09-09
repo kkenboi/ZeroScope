@@ -140,10 +140,16 @@ class EmissionFactor(models.Model):
         'spend_based_fallback': ['$', '€', '£', 'local_currency'],
     }
     
-    ENTRY_TYPE_CHOICES = [
-        ('simple', 'Simple Entry'),
-        ('guided', 'Guided Entry'),
+    # Uncertainty type choices for Brightway2 integration
+    UNCERTAINTY_TYPE_CHOICES = [
+        (0, 'No uncertainty'),
+        (1, 'Lognormal'),
+        (2, 'Normal'),
+        (3, 'Uniform'),
+        (4, 'Triangular'),
+        (5, 'Beta'),
     ]
+    
     # === CORE FIELDS ===
     factor_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
@@ -165,17 +171,16 @@ class EmissionFactor(models.Model):
     description = models.TextField(blank=True, null=True, help_text="Additional notes or context")
     sub_category = models.CharField(max_length=100, blank=True, null=True, help_text="More specific categorization")
     
-    # Entry workflow tracking
-    entry_type = models.CharField(
-        max_length=10, 
-        choices=ENTRY_TYPE_CHOICES, 
-        default='simple',
-        help_text="How this factor was entered (simple or guided)"
+    # Brightway2 uncertainty analysis fields
+    uncertainty_type = models.IntegerField(
+        choices=UNCERTAINTY_TYPE_CHOICES,
+        default=0,
+        help_text="Statistical distribution type for uncertainty analysis (Brightway2 conventions)"
     )
-    guided_parameters = models.JSONField(
-        blank=True, 
+    uncertainty_params = models.JSONField(
+        blank=True,
         null=True,
-        help_text="Additional parameters captured during guided entry"
+        help_text="Statistical distribution parameters (e.g., {'mean': x, 'sigma': y, 'min': z, 'max': w})"
     )
     
     # System fields
@@ -229,6 +234,33 @@ class EmissionFactor(models.Model):
             raise ValidationError({
                 'year': f'Year must be between 1990 and {timezone.now().year + 5}'
             })
+        
+        # Validate uncertainty parameters based on uncertainty type
+        if self.uncertainty_type and self.uncertainty_type > 0:
+            if not self.uncertainty_params:
+                raise ValidationError({
+                    'uncertainty_params': 'Uncertainty parameters are required when uncertainty type is specified'
+                })
+            
+            # Validate required parameters based on uncertainty type
+            required_params = self._get_required_uncertainty_params(self.uncertainty_type)
+            if required_params:
+                missing_params = [param for param in required_params if param not in self.uncertainty_params]
+                if missing_params:
+                    raise ValidationError({
+                        'uncertainty_params': f'Missing required parameters for uncertainty type {self.get_uncertainty_type_display()}: {", ".join(missing_params)}'
+                    })
+    
+    def _get_required_uncertainty_params(self, uncertainty_type):
+        """Get required parameters for each uncertainty type"""
+        param_requirements = {
+            1: ['sigma'],  # Lognormal: needs sigma (geometric standard deviation)
+            2: ['sigma'],  # Normal: needs sigma (standard deviation)
+            3: ['min', 'max'],  # Uniform: needs min and max
+            4: ['min', 'max'],  # Triangular: needs min, max (mode optional)
+            5: ['min', 'max', 'alpha', 'beta'],  # Beta: needs min, max, alpha, beta
+        }
+        return param_requirements.get(uncertainty_type, [])
     
     @classmethod
     def get_valid_units_for_category(cls, category):
@@ -253,9 +285,25 @@ class EmissionFactor(models.Model):
         """Save with validation"""
         self.full_clean()
         super().save(*args, **kwargs)
+    
+    def has_uncertainty(self):
+        """Check if this emission factor has uncertainty data"""
+        return self.uncertainty_type > 0 and self.uncertainty_params is not None
+    
+    def get_uncertainty_description(self):
+        """Get human-readable description of uncertainty"""
+        if not self.has_uncertainty():
+            return "No uncertainty data"
+        
+        uncertainty_name = self.get_uncertainty_type_display()
+        params = self.uncertainty_params or {}
+        
+        param_str = ", ".join([f"{k}={v}" for k, v in params.items()])
+        return f"{uncertainty_name} ({param_str})"
 
     def __str__(self):
-        return f"{self.name} ({self.get_category_display()}) - {self.emission_factor_value} kgCO₂e/{self.unit}"
+        uncertainty_info = f" [{self.get_uncertainty_type_display()}]" if self.has_uncertainty() else ""
+        return f"{self.name} ({self.get_category_display()}) - {self.emission_factor_value} kgCO₂e/{self.unit}{uncertainty_info}"
 
 
 class EmissionActivity(models.Model):

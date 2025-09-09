@@ -15,10 +15,13 @@ class UserSerializer(serializers.ModelSerializer):
         return user       
 
 class EmissionFactorSerializer(serializers.ModelSerializer):
-    """Base serializer for emission factors with full validation"""
+    """Base serializer for emission factors with full validation and Brightway2 uncertainty support"""
     scope = serializers.ReadOnlyField()
     scope_display = serializers.ReadOnlyField()
     category_display = serializers.CharField(source='get_category_display', read_only=True)
+    uncertainty_type_display = serializers.CharField(source='get_uncertainty_type_display', read_only=True)
+    has_uncertainty = serializers.ReadOnlyField()
+    uncertainty_description = serializers.CharField(source='get_uncertainty_description', read_only=True)
     valid_units = serializers.SerializerMethodField()
 
     class Meta:
@@ -26,7 +29,8 @@ class EmissionFactorSerializer(serializers.ModelSerializer):
         fields = [
             'factor_id', 'name', 'category', 'category_display', 'scope', 'scope_display',
             'emission_factor_value', 'unit', 'valid_units', 'source', 'year',
-            'description', 'sub_category', 'entry_type', 'guided_parameters',
+            'description', 'sub_category', 'uncertainty_type', 'uncertainty_type_display',
+            'uncertainty_params', 'has_uncertainty', 'uncertainty_description',
             'created_date', 'last_modified'
         ]
         read_only_fields = ['factor_id', 'created_date', 'last_modified', 'scope', 'scope_display']
@@ -36,9 +40,11 @@ class EmissionFactorSerializer(serializers.ModelSerializer):
         return EmissionFactor.get_valid_units_for_category(obj.category)
 
     def validate(self, attrs):
-        """Comprehensive validation"""
+        """Comprehensive validation including uncertainty parameters"""
         category = attrs.get('category')
         unit = attrs.get('unit')
+        uncertainty_type = attrs.get('uncertainty_type', 0)
+        uncertainty_params = attrs.get('uncertainty_params')
         
         # Unit-category validation
         if category and unit:
@@ -49,83 +55,35 @@ class EmissionFactorSerializer(serializers.ModelSerializer):
                            f"Valid units are: {', '.join(valid_units)}"
                 })
         
-        return attrs
-
-
-class SimpleEmissionFactorSerializer(EmissionFactorSerializer):
-    """Simplified serializer for direct emission factor entry"""
-    
-    class Meta(EmissionFactorSerializer.Meta):
-        fields = [
-            'factor_id', 'name', 'category', 'category_display', 'scope', 'scope_display',
-            'emission_factor_value', 'unit', 'valid_units', 'source', 'year',
-            'description', 'sub_category', 'created_date', 'last_modified'
-        ]
-    
-    def create(self, validated_data):
-        """Create emission factor with simple entry type"""
-        validated_data['entry_type'] = 'simple'
-        return super().create(validated_data)
-
-
-class GuidedEmissionFactorSerializer(EmissionFactorSerializer):
-    """Enhanced serializer for guided emission factor entry with category-specific validation"""
-    
-    class Meta(EmissionFactorSerializer.Meta):
-        fields = EmissionFactorSerializer.Meta.fields  # Include all fields including guided_parameters
-    
-    def create(self, validated_data):
-        """Create emission factor with guided entry type"""
-        validated_data['entry_type'] = 'guided'
-        return super().create(validated_data)
-    
-    def validate(self, attrs):
-        """Enhanced validation including guided parameters"""
-        attrs = super().validate(attrs)
-        
-        category = attrs.get('category')
-        guided_params = attrs.get('guided_parameters', {})
-        
-        # Category-specific guided parameter validation
-        if category and guided_params:
-            self._validate_guided_parameters(category, guided_params)
+        # Uncertainty validation
+        if uncertainty_type and uncertainty_type > 0:
+            if not uncertainty_params:
+                raise serializers.ValidationError({
+                    'uncertainty_params': 'Uncertainty parameters are required when uncertainty type is specified'
+                })
+            
+            # Validate required parameters based on uncertainty type
+            required_params = self._get_required_uncertainty_params(uncertainty_type)
+            if required_params:
+                missing_params = [param for param in required_params if param not in uncertainty_params]
+                if missing_params:
+                    uncertainty_type_name = dict(EmissionFactor.UNCERTAINTY_TYPE_CHOICES).get(uncertainty_type, 'Unknown')
+                    raise serializers.ValidationError({
+                        'uncertainty_params': f'Missing required parameters for {uncertainty_type_name}: {", ".join(missing_params)}'
+                    })
         
         return attrs
     
-    def _validate_guided_parameters(self, category, guided_params):
-        """Validate guided parameters based on category"""
-        
-        # Fuel combustion validation
-        if category == 'fuel_combustion':
-            required_params = ['fuel_type', 'measurement_type']
-            for param in required_params:
-                if param not in guided_params:
-                    raise serializers.ValidationError({
-                        'guided_parameters': f'{param} is required for fuel combustion category'
-                    })
-        
-        # Transportation validation (business travel, employee commuting)
-        elif category in ['business_travel', 'employee_commuting']:
-            if 'transport_mode' not in guided_params:
-                raise serializers.ValidationError({
-                    'guided_parameters': 'transport_mode is required for transportation categories'
-                })
-        
-        # Transport distribution validation
-        elif category in ['upstream_transport', 'downstream_transport']:
-            required_params = ['transport_mode', 'transport_type']
-            for param in required_params:
-                if param not in guided_params:
-                    raise serializers.ValidationError({
-                        'guided_parameters': f'{param} is required for transport distribution categories'
-                    })
-        
-        # Electricity consumption validation
-        elif category == 'electricity_consumption':
-            if 'grid_region' not in guided_params:
-                raise serializers.ValidationError({
-                    'guided_parameters': 'grid_region is required for electricity consumption'
-                })
+    def _get_required_uncertainty_params(self, uncertainty_type):
+        """Get required parameters for each uncertainty type"""
+        param_requirements = {
+            1: ['sigma'],  # Lognormal: needs sigma (geometric standard deviation)
+            2: ['sigma'],  # Normal: needs sigma (standard deviation)
+            3: ['min', 'max'],  # Uniform: needs min and max
+            4: ['min', 'max'],  # Triangular: needs min, max (mode optional)
+            5: ['min', 'max', 'alpha', 'beta'],  # Beta: needs min, max, alpha, beta
+        }
+        return param_requirements.get(uncertainty_type, [])
 
 
 class CategoryInfoSerializer(serializers.Serializer):

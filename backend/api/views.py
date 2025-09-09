@@ -9,7 +9,6 @@ from .serializer import UserSerializer, ProjectSerializer
 
 from .models import Project, EmissionScope, EmissionFactor, EmissionActivity, LCAProduct
 from .serializer import EmissionScopeSerializer, EmissionFactorSerializer, EmissionActivitySerializer
-from .serializer import SimpleEmissionFactorSerializer, GuidedEmissionFactorSerializer
 from .serializer import CategoryInfoSerializer, UnitValidationSerializer
 from .serializer import LCAProductSerializer
 
@@ -54,7 +53,7 @@ class EmissionScopeViewSet(viewsets.ModelViewSet):
 class EmissionFactorViewSet(viewsets.ModelViewSet):
     """
     Clean, user-focused emission factor management.
-    Supports both simple and guided entry workflows.
+    All emission factors use the unified model with uncertainty analysis support.
     """
     queryset = EmissionFactor.objects.all()
     serializer_class = EmissionFactorSerializer
@@ -90,30 +89,6 @@ class EmissionFactorViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(source__icontains=source)
         
         return queryset.order_by('category', 'name')
-    
-    @action(detail=False, methods=['post'])
-    def simple_entry(self, request):
-        """Create emission factor using simple entry workflow"""
-        serializer = SimpleEmissionFactorSerializer(data=request.data)
-        if serializer.is_valid():
-            emission_factor = serializer.save()
-            return Response(
-                EmissionFactorSerializer(emission_factor).data, 
-                status=status.HTTP_201_CREATED
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=False, methods=['post'])
-    def guided_entry(self, request):
-        """Create emission factor using guided entry workflow"""
-        serializer = GuidedEmissionFactorSerializer(data=request.data)
-        if serializer.is_valid():
-            emission_factor = serializer.save()
-            return Response(
-                EmissionFactorSerializer(emission_factor).data, 
-                status=status.HTTP_201_CREATED
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get'])
     def categories(self, request):

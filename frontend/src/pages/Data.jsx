@@ -328,7 +328,7 @@ function Data() {
                       <TableCell>Unit</TableCell>
                       <TableCell>Year</TableCell>
                       <TableCell>Source</TableCell>
-                      <TableCell>Entry Type</TableCell>
+                      <TableCell>Uncertainty</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -353,10 +353,10 @@ function Data() {
                         <TableCell>{factor.source}</TableCell>
                         <TableCell>
                           <Chip 
-                            label={factor.entry_type || 'simple'} 
+                            label={factor.uncertainty_type > 0 ? `Uncertainty: ${factor.uncertainty_type_display || 'Type ' + factor.uncertainty_type}` : 'No uncertainty'} 
                             size="small" 
                             variant="outlined"
-                            color={factor.entry_type === 'guided' ? "secondary" : "default"}
+                            color={factor.uncertainty_type > 0 ? "primary" : "default"}
                           />
                         </TableCell>
                       </TableRow>
