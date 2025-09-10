@@ -35,15 +35,16 @@ function ProjectDetails() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Form state
+  // Form state for new activity dialog
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [scope, setScope] = useState(1)
-  const [activityName, setActivityName] = useState("")
-  const [description, setDescription] = useState("")
-  const [quantity, setQuantity] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("")
-  const [selectedFactor, setSelectedFactor] = useState(null)
-  const [scope3Category, setScope3Category] = useState("")
+  const [newActivity, setNewActivity] = useState({
+    scope: 1,
+    activityName: "",
+    description: "",
+    quantity: "",
+    emissionFactorId: "",
+    scope3Category: ""
+  })
   const [selectedScopes, setSelectedScopes] = useState([1, 2, 3])
 
   // Fetch project (with scopes + activities)
@@ -67,82 +68,140 @@ function ProjectDetails() {
 
   // Fetch emission factors
   useEffect(() => {
-    fetch("/api/emission-factors/all/")
-      .then(res => {
-        if (!res.ok) throw new Error("Failed to fetch emission factors");
-        return res.json();
-      })
-      .then(data => {
-        // Accept both array and paginated object
-        if (Array.isArray(data)) {
-          setFactors(data);
-        } else if (data.results) {
-          setFactors(data.results);
-        } else {
-          setFactors([]);
+    const fetchAllFactors = async () => {
+      try {
+        let allFactors = [];
+        let url = "/api/emission-factors/?page_size=100"; // Use smaller page size
+        
+        while (url) {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error("Failed to fetch emission factors");
+          
+          const data = await response.json();
+          
+          // Handle both array and paginated responses
+          if (Array.isArray(data)) {
+            allFactors = [...allFactors, ...data];
+            break; // No pagination
+          } else if (data.results) {
+            allFactors = [...allFactors, ...data.results];
+            url = data.next; // Continue to next page if available
+          } else {
+            break;
+          }
         }
-      })
-      .catch(() => setFactors([]));
+        
+        console.log(`Loaded ${allFactors.length} emission factors`);
+        console.log(`Scope 3 factors: ${allFactors.filter(f => f.scope === 3).length}`);
+        setFactors(allFactors);
+      } catch (error) {
+        console.error("Failed to fetch emission factors:", error);
+        setFactors([]);
+      }
+    };
+    
+    fetchAllFactors();
   }, [])
 
-  const categories = useMemo(() => [...new Set(factors.map(f => f.category))], [factors])
-  const filteredFactors = useMemo(
-    () => factors.filter(f => !selectedCategory || f.category === selectedCategory),
-    [factors, selectedCategory]
-  )
-  const handleFactorChange = (id) => setSelectedFactor(filteredFactors.find(f => f.factor_id === id) || null)
+  // Filtered factors based on selected scope and category
+  const availableFactors = useMemo(() => {
+    console.log(`Filtering factors: total=${factors.length}, scope=${newActivity.scope}, category=${newActivity.scope3Category}`);
+    
+    let filtered = factors.filter(f => f.scope === newActivity.scope);
+    console.log(`After scope filter: ${filtered.length} factors`);
+    
+    // For Scope 3, also filter by category if one is selected
+    if (newActivity.scope === 3 && newActivity.scope3Category) {
+      filtered = filtered.filter(f => f.category === newActivity.scope3Category);
+      console.log(`After category filter (${newActivity.scope3Category}): ${filtered.length} factors`);
+    }
+    
+    return filtered;
+  }, [factors, newActivity.scope, newActivity.scope3Category])
 
   const handleSubmit = async () => {
-    if (!selectedFactor) {
+    if (!newActivity.emissionFactorId) {
       alert("Please select an emission factor")
       return
     }
 
-    const selectedScopeObj = Array.isArray(project?.scopes)
-      ? project.scopes.find(s => s.scope_number === scope)
-      : null
+    if (!newActivity.activityName.trim()) {
+      alert("Please enter an activity name")
+      return
+    }
 
+    if (!newActivity.quantity || Number(newActivity.quantity) <= 0) {
+      alert("Please enter a valid quantity")
+      return
+    }
+
+    const selectedFactor = factors.find(f => f.factor_id === newActivity.emissionFactorId)
+    
+    // Map EmissionFactor categories to EmissionActivity scope3_category values
+    const categoryMapping = {
+      'purchased_goods_materials': 'purchased_goods_services',
+      'capital_goods': 'capital_goods',
+      'fuel_energy_related': 'fuel_energy_related', 
+      'upstream_transport': 'upstream_transport',
+      'waste_generated': 'waste_generated',
+      'business_travel': 'business_travel',
+      'employee_commuting': 'employee_commuting',
+      'upstream_leased_assets': 'leased_assets_upstream',
+      'downstream_transport': 'downstream_transport',
+      'processing_sold_products': 'processing_sold_products',
+      'use_sold_products': 'use_sold_products',
+      'end_of_life_sold_products': 'end_of_life',
+      'downstream_leased_assets': 'leased_assets_downstream',
+      'franchises': 'franchises',
+      'investments': 'investments'
+    }
+    
     const payload = {
       project: project.project_id,
-      // backend will create/find the scope if missing when scope_number is provided
-      scope: selectedScopeObj?.scope_id,
-      scope_number: scope,
-      activity_name: activityName,
-      description,
-      quantity: Number(quantity),
-      unit: selectedFactor.base_unit,
+      scope_number: newActivity.scope,
+      activity_name: newActivity.activityName,
+      description: newActivity.description,
+      quantity: Number(newActivity.quantity),
+      unit: selectedFactor.unit,
       emission_factor_id: selectedFactor.factor_id,
     }
-    if (scope === 3) {
-      if (!scope3Category) {
-        alert("Please select a Scope 3 category")
-        return
-      }
-      payload.scope3_category = scope3Category
+
+    if (newActivity.scope === 3 && newActivity.scope3Category) {
+      // Map the EmissionFactor category to EmissionActivity scope3_category
+      payload.scope3_category = categoryMapping[newActivity.scope3Category] || newActivity.scope3Category
     }
 
-    const res = await fetch("/api/emission-activities/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
+    try {
+      const res = await fetch("/api/emission-activities/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
 
-    if (res.ok) {
-      alert("Activity added!")
-      setActivityName("")
-      setDescription("")
-      setQuantity("")
-      setSelectedFactor(null)
-      setSelectedCategory("")
-      setScope3Category("")
-      setDialogOpen(false)
+      if (res.ok) {
+        alert("Activity added successfully!")
+        // Reset form
+        setNewActivity({
+          scope: 1,
+          activityName: "",
+          description: "",
+          quantity: "",
+          emissionFactorId: "",
+          scope3Category: ""
+        })
+        setDialogOpen(false)
 
-      // Refresh project details
-      const refreshed = await fetch(`/api/projects/${projectID}/`)
-      setProject(await refreshed.json())
-    } else {
-      const err = await res.json()
-      alert("Error: " + JSON.stringify(err))
+        // Refresh project details
+        const refreshed = await fetch(`/api/projects/${projectID}/`)
+        if (refreshed.ok) {
+          setProject(await refreshed.json())
+        }
+      } else {
+        const err = await res.json()
+        alert("Error: " + JSON.stringify(err))
+      }
+    } catch (error) {
+      alert("Error: " + error.message)
     }
   }
 
@@ -202,128 +261,206 @@ function ProjectDetails() {
         <Button variant="contained" onClick={() => setDialogOpen(true)}>Add Emission Activity</Button>
       </Box>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>Add Emission Activity</DialogTitle>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" component="div">
+            Add New Emission Activity
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Create a new emission activity by selecting an emission factor and entering activity data
+          </Typography>
+        </DialogTitle>
         <DialogContent dividers>
-          <Grid container spacing={2} sx={{ mt: 0 }}>
-            <Grid item xs={12} sm={4}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
+            
+            {/* Scope Selection */}
+            <TextField
+              select
+              label="Emission Scope"
+              value={newActivity.scope}
+              onChange={e => setNewActivity(prev => ({ 
+                ...prev, 
+                scope: Number(e.target.value),
+                emissionFactorId: "", // Reset factor when scope changes
+                scope3Category: "" // Reset scope 3 category
+              }))}
+              fullWidth
+              required
+            >
+              <MenuItem value={1}>
+                <Box>
+                  <Typography variant="body1">Scope 1 - Direct Emissions</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Direct GHG emissions from sources owned/controlled by organization
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem value={2}>
+                <Box>
+                  <Typography variant="body1">Scope 2 - Energy Indirect</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Indirect emissions from purchased electricity, steam, heat, cooling
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem value={3}>
+                <Box>
+                  <Typography variant="body1">Scope 3 - Other Indirect</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    All other indirect emissions in value chain
+                  </Typography>
+                </Box>
+              </MenuItem>
+            </TextField>
+
+            {/* Scope 3 Category (only show if Scope 3 selected) */}
+            {newActivity.scope === 3 && (
               <TextField
                 select
-                label="Scope"
-                value={scope}
-                onChange={e => setScope(Number(e.target.value))}
+                label="Scope 3 Category"
+                value={newActivity.scope3Category}
+                onChange={e => setNewActivity(prev => ({ 
+                  ...prev, 
+                  scope3Category: e.target.value,
+                  emissionFactorId: "" // Reset factor when category changes
+                }))}
                 fullWidth
+                helperText="Filter emission factors by Scope 3 category"
               >
-                <MenuItem value={1}>Scope 1</MenuItem>
-                <MenuItem value={2}>Scope 2</MenuItem>
-                <MenuItem value={3}>Scope 3</MenuItem>
+                <MenuItem value="">All Categories ({factors.filter(f => f.scope === 3).length} factors)</MenuItem>
+                <MenuItem value="purchased_goods_materials">1. Purchased goods & materials ({factors.filter(f => f.scope === 3 && f.category === 'purchased_goods_materials').length} factors)</MenuItem>
+                <MenuItem value="capital_goods">2. Capital goods ({factors.filter(f => f.scope === 3 && f.category === 'capital_goods').length} factors)</MenuItem>
+                <MenuItem value="fuel_energy_related">3. Fuel & energy related activities ({factors.filter(f => f.scope === 3 && f.category === 'fuel_energy_related').length} factors)</MenuItem>
+                <MenuItem value="upstream_transport">4. Upstream transportation & distribution ({factors.filter(f => f.scope === 3 && f.category === 'upstream_transport').length} factors)</MenuItem>
+                <MenuItem value="waste_generated">5. Waste generated in operations ({factors.filter(f => f.scope === 3 && f.category === 'waste_generated').length} factors)</MenuItem>
+                <MenuItem value="business_travel">6. Business travel ({factors.filter(f => f.scope === 3 && f.category === 'business_travel').length} factors)</MenuItem>
+                <MenuItem value="employee_commuting">7. Employee commuting ({factors.filter(f => f.scope === 3 && f.category === 'employee_commuting').length} factors)</MenuItem>
+                <MenuItem value="upstream_leased_assets">8. Upstream leased assets ({factors.filter(f => f.scope === 3 && f.category === 'upstream_leased_assets').length} factors)</MenuItem>
+                <MenuItem value="downstream_transport">9. Downstream transportation & distribution ({factors.filter(f => f.scope === 3 && f.category === 'downstream_transport').length} factors)</MenuItem>
+                <MenuItem value="processing_sold_products">10. Processing of sold products ({factors.filter(f => f.scope === 3 && f.category === 'processing_sold_products').length} factors)</MenuItem>
+                <MenuItem value="use_sold_products">11. Use of sold products ({factors.filter(f => f.scope === 3 && f.category === 'use_sold_products').length} factors)</MenuItem>
+                <MenuItem value="end_of_life_sold_products">12. End-of-life treatment of sold products ({factors.filter(f => f.scope === 3 && f.category === 'end_of_life_sold_products').length} factors)</MenuItem>
+                <MenuItem value="downstream_leased_assets">13. Downstream leased assets ({factors.filter(f => f.scope === 3 && f.category === 'downstream_leased_assets').length} factors)</MenuItem>
+                <MenuItem value="franchises">14. Franchises ({factors.filter(f => f.scope === 3 && f.category === 'franchises').length} factors)</MenuItem>
+                <MenuItem value="investments">15. Investments ({factors.filter(f => f.scope === 3 && f.category === 'investments').length} factors)</MenuItem>
+                <MenuItem value="end_of_life_sold_products">12. End-of-life treatment of sold products ({factors.filter(f => f.scope === 3 && f.category === 'end_of_life_sold_products').length} factors)</MenuItem>
+                <MenuItem value="downstream_leased_assets">13. Downstream leased assets ({factors.filter(f => f.scope === 3 && f.category === 'downstream_leased_assets').length} factors)</MenuItem>
+                <MenuItem value="franchises">14. Franchises ({factors.filter(f => f.scope === 3 && f.category === 'franchises').length} factors)</MenuItem>
+                <MenuItem value="investments">15. Investments ({factors.filter(f => f.scope === 3 && f.category === 'investments').length} factors)</MenuItem>
               </TextField>
-            </Grid>
-
-            <Grid item xs={12} sm={4}>
-              <TextField
-                select
-                label="Factor Category"
-                value={selectedCategory}
-                onChange={e => {
-                  setSelectedCategory(e.target.value)
-                  setSelectedFactor(null)
-                }}
-                fullWidth
-              >
-                {[...new Set(factors.map(f => f.category))].map(c => (
-                  <MenuItem key={c} value={c}>{c}</MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-
-            <Grid item xs={12} sm={4}>
-              <TextField
-                select
-                label="Emission Factor"
-                value={selectedFactor?.factor_id || ""}
-                onChange={e => handleFactorChange(e.target.value)}
-                fullWidth
-              >
-                {factors
-                  .filter(f => !selectedCategory || f.category === selectedCategory)
-                  .map(f => (
-                    <MenuItem key={f.factor_id} value={f.factor_id}>
-                      {f.name} ({f.base_unit})
-                    </MenuItem>
-                  ))}
-              </TextField>
-            </Grid>
-
-            {scope === 3 && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  select
-                  label="Scope 3 Category"
-                  value={scope3Category}
-                  onChange={e => setScope3Category(e.target.value)}
-                  fullWidth
-                >
-                  <MenuItem value="purchased_goods_services">1. Purchased goods and services</MenuItem>
-                  <MenuItem value="capital_goods">2. Capital goods</MenuItem>
-                  <MenuItem value="fuel_energy_related">3. Fuel- and energy-related activities</MenuItem>
-                  <MenuItem value="upstream_transport">4. Upstream transportation and distribution</MenuItem>
-                  <MenuItem value="waste_generated">5. Waste generated in operations</MenuItem>
-                  <MenuItem value="business_travel">6. Business travel</MenuItem>
-                  <MenuItem value="employee_commuting">7. Employee commuting</MenuItem>
-                  <MenuItem value="leased_assets_upstream">8. Upstream leased assets</MenuItem>
-                  <MenuItem value="downstream_transport">9. Downstream transportation and distribution</MenuItem>
-                  <MenuItem value="processing_sold_products">10. Processing of sold products</MenuItem>
-                  <MenuItem value="use_sold_products">11. Use of sold products</MenuItem>
-                  <MenuItem value="end_of_life">12. End-of-life treatment of sold products</MenuItem>
-                  <MenuItem value="leased_assets_downstream">13. Downstream leased assets</MenuItem>
-                  <MenuItem value="franchises">14. Franchises</MenuItem>
-                  <MenuItem value="investments">15. Investments</MenuItem>
-                </TextField>
-              </Grid>
             )}
 
-            <Grid item xs={12} sm={6}>
+            {/* Emission Factor Selection */}
+            <TextField
+              select
+              label="Emission Factor"
+              value={newActivity.emissionFactorId}
+              onChange={e => setNewActivity(prev => ({ ...prev, emissionFactorId: e.target.value }))}
+              fullWidth
+              required
+              disabled={availableFactors.length === 0}
+              helperText={
+                availableFactors.length === 0 
+                  ? `No emission factors available for Scope ${newActivity.scope}${newActivity.scope === 3 && newActivity.scope3Category ? ` - ${newActivity.scope3Category}` : ''}. Total factors loaded: ${factors.length}` 
+                  : `${availableFactors.length} factors available (from ${factors.filter(f => f.scope === newActivity.scope).length} total Scope ${newActivity.scope} factors)`
+              }
+            >
+              {availableFactors.map(factor => (
+                <MenuItem key={factor.factor_id} value={factor.factor_id}>
+                  <Box>
+                    <Typography variant="body1">{factor.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {factor.emission_factor_value} kgCO₂e/{factor.unit} • {factor.category_display || factor.category}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              ))}
+            </TextField>
+
+            {/* Activity Details */}
+            <TextField
+              label="Activity Name"
+              value={newActivity.activityName}
+              onChange={e => setNewActivity(prev => ({ ...prev, activityName: e.target.value }))}
+              fullWidth
+              required
+              placeholder="e.g., Office electricity consumption"
+            />
+
+            <TextField
+              label="Description"
+              value={newActivity.description}
+              onChange={e => setNewActivity(prev => ({ ...prev, description: e.target.value }))}
+              fullWidth
+              multiline
+              rows={2}
+              placeholder="Optional: Additional details about this activity"
+            />
+
+            {/* Quantity and Unit */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
                 label="Quantity"
                 type="number"
-                value={quantity}
-                onChange={e => setQuantity(e.target.value)}
+                value={newActivity.quantity}
+                onChange={e => setNewActivity(prev => ({ ...prev, quantity: e.target.value }))}
                 fullWidth
+                required
+                inputProps={{ min: 0, step: "any" }}
               />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
               <TextField
                 label="Unit"
-                value={selectedFactor?.base_unit || ""}
+                value={(() => {
+                  const selectedFactor = factors.find(f => f.factor_id === newActivity.emissionFactorId)
+                  return selectedFactor?.unit || ""
+                })()}
                 InputProps={{ readOnly: true }}
                 fullWidth
+                helperText="Unit is determined by selected emission factor"
               />
-            </Grid>
+            </Box>
 
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Activity Name"
-                value={activityName}
-                onChange={e => setActivityName(e.target.value)}
-                fullWidth
-              />
-            </Grid>
+            {/* Calculation Preview */}
+            {newActivity.emissionFactorId && newActivity.quantity && (
+              <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="subtitle2" gutterBottom>Emission Calculation Preview</Typography>
+                {(() => {
+                  const selectedFactor = factors.find(f => f.factor_id === newActivity.emissionFactorId)
+                  const emissions = (Number(newActivity.quantity) * Number(selectedFactor?.emission_factor_value || 0)) / 1000 // Convert kg to tonnes
+                  return (
+                    <Typography variant="body2" color="text.secondary">
+                      {newActivity.quantity} {selectedFactor?.unit} × {selectedFactor?.emission_factor_value} kgCO₂e/{selectedFactor?.unit} = <strong>{emissions.toFixed(3)} tCO₂e</strong>
+                    </Typography>
+                  )
+                })()}
+              </Box>
+            )}
 
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Description"
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                fullWidth
-              />
-            </Grid>
-          </Grid>
+          </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSubmit}>Add</Button>
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button 
+            onClick={() => {
+              setDialogOpen(false)
+              setNewActivity({
+                scope: 1,
+                activityName: "",
+                description: "",
+                quantity: "",
+                emissionFactorId: "",
+                scope3Category: ""
+              })
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSubmit}
+            disabled={!newActivity.emissionFactorId || !newActivity.activityName || !newActivity.quantity}
+          >
+            Add Activity
+          </Button>
         </DialogActions>
       </Dialog>
 

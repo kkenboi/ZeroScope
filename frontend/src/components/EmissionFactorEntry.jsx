@@ -137,15 +137,14 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
     const requiredParams = getRequiredParams(uncertainty_type)
 
     return (
-      <>
-        <Grid item xs={12}>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-            {uncertaintyTypes[uncertainty_type]} Distribution Parameters
-          </Typography>
-        </Grid>
+      <Box>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+          {uncertaintyTypes[uncertainty_type]} Distribution Parameters
+        </Typography>
 
+        {/* Render parameters in pairs side by side */}
         {requiredParams.includes("sigma") && (
-          <Grid item xs={6}>
+          <Box sx={{ mb: 3 }}>
             <TextField
               label="Sigma (Standard Deviation)"
               type="number"
@@ -170,127 +169,135 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
                 },
               }}
             />
-          </Grid>
+          </Box>
         )}
 
-        {requiredParams.includes("min") && (
-          <Grid item xs={6}>
-            <TextField
-              label="Minimum Value"
-              type="number"
-              fullWidth
-              value={formData.uncertainty_params.min || ""}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  uncertainty_params: {
-                    ...prev.uncertainty_params,
-                    min: Number.parseFloat(e.target.value) || "",
-                  },
-                }))
-              }
-              helperText="Minimum possible value"
-              size="small"
-              sx={{
-                "& .MuiFormHelperText-root": {
-                  minHeight: "40px",
-                  display: "flex",
-                  alignItems: "center",
-                },
-              }}
-            />
-          </Grid>
+        {(requiredParams.includes("min") || requiredParams.includes("max")) && (
+          <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            {requiredParams.includes("min") && (
+              <Box sx={{ flex: 1 }}>
+                <TextField
+                  label="Minimum Value"
+                  type="number"
+                  fullWidth
+                  value={formData.uncertainty_params.min || ""}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      uncertainty_params: {
+                        ...prev.uncertainty_params,
+                        min: Number.parseFloat(e.target.value) || "",
+                      },
+                    }))
+                  }
+                  helperText="Minimum possible value"
+                  size="small"
+                  sx={{
+                    "& .MuiFormHelperText-root": {
+                      minHeight: "40px",
+                      display: "flex",
+                      alignItems: "center",
+                    },
+                  }}
+                />
+              </Box>
+            )}
+
+            {requiredParams.includes("max") && (
+              <Box sx={{ flex: 1 }}>
+                <TextField
+                  label="Maximum Value"
+                  type="number"
+                  fullWidth
+                  value={formData.uncertainty_params.max || ""}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      uncertainty_params: {
+                        ...prev.uncertainty_params,
+                        max: Number.parseFloat(e.target.value) || "",
+                      },
+                    }))
+                  }
+                  helperText="Maximum possible value"
+                  size="small"
+                  sx={{
+                    "& .MuiFormHelperText-root": {
+                      minHeight: "40px",
+                      display: "flex",
+                      alignItems: "center",
+                    },
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
         )}
 
-        {requiredParams.includes("max") && (
-          <Grid item xs={6}>
-            <TextField
-              label="Maximum Value"
-              type="number"
-              fullWidth
-              value={formData.uncertainty_params.max || ""}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  uncertainty_params: {
-                    ...prev.uncertainty_params,
-                    max: Number.parseFloat(e.target.value) || "",
-                  },
-                }))
-              }
-              helperText="Maximum possible value"
-              size="small"
-              sx={{
-                "& .MuiFormHelperText-root": {
-                  minHeight: "40px",
-                  display: "flex",
-                  alignItems: "center",
-                },
-              }}
-            />
-          </Grid>
-        )}
+        {(requiredParams.includes("alpha") || requiredParams.includes("beta")) && (
+          <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            {requiredParams.includes("alpha") && (
+              <Box sx={{ flex: 1 }}>
+                <TextField
+                  label="Alpha Parameter"
+                  type="number"
+                  fullWidth
+                  value={formData.uncertainty_params.alpha || ""}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      uncertainty_params: {
+                        ...prev.uncertainty_params,
+                        alpha: Number.parseFloat(e.target.value) || "",
+                      },
+                    }))
+                  }
+                  helperText="Alpha parameter for Beta distribution"
+                  size="small"
+                  sx={{
+                    "& .MuiFormHelperText-root": {
+                      minHeight: "40px",
+                      display: "flex",
+                      alignItems: "center",
+                    },
+                  }}
+                />
+              </Box>
+            )}
 
-        {requiredParams.includes("alpha") && (
-          <Grid item xs={6}>
-            <TextField
-              label="Alpha Parameter"
-              type="number"
-              fullWidth
-              value={formData.uncertainty_params.alpha || ""}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  uncertainty_params: {
-                    ...prev.uncertainty_params,
-                    alpha: Number.parseFloat(e.target.value) || "",
-                  },
-                }))
-              }
-              helperText="Alpha parameter for Beta distribution"
-              size="small"
-              sx={{
-                "& .MuiFormHelperText-root": {
-                  minHeight: "40px",
-                  display: "flex",
-                  alignItems: "center",
-                },
-              }}
-            />
-          </Grid>
-        )}
-
-        {requiredParams.includes("beta") && (
-          <Grid item xs={6}>
-            <TextField
-              label="Beta Parameter"
-              type="number"
-              fullWidth
-              value={formData.uncertainty_params.beta || ""}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  uncertainty_params: {
-                    ...prev.uncertainty_params,
-                    beta: Number.parseFloat(e.target.value) || "",
-                  },
-                }))
-              }
-              helperText="Beta parameter for Beta distribution"
-              size="small"
-              sx={{
-                "& .MuiFormHelperText-root": {
-                  minHeight: "40px",
-                  display: "flex",
-                  alignItems: "center",
-                },
-              }}
-            />
-          </Grid>
+            {requiredParams.includes("beta") && (
+              <Box sx={{ flex: 1 }}>
+                <TextField
+                  label="Beta Parameter"
+                  type="number"
+                  fullWidth
+                  value={formData.uncertainty_params.beta || ""}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      uncertainty_params: {
+                        ...prev.uncertainty_params,
+                        beta: Number.parseFloat(e.target.value) || "",
+                      },
+                    }))
+                  }
+                  helperText="Beta parameter for Beta distribution"
+                  size="small"
+                  sx={{
+                    "& .MuiFormHelperText-root": {
+                      minHeight: "40px",
+                      display: "flex",
+                      alignItems: "center",
+                    },
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
         )}
 
         {uncertainty_type === 4 && (
-          <Grid item xs={6}>
+          <Box sx={{ mb: 3 }}>
             <TextField
               label="Mode (Optional)"
               type="number"
@@ -315,9 +322,9 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
                 },
               }}
             />
-          </Grid>
+          </Box>
         )}
-      </>
+      </Box>
     )
   }
 
@@ -405,54 +412,55 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
 
   const renderForm = () => (
     <Box sx={{ mt: 2 }}>
-      <Grid container spacing={3}>
-        {/* Basic Information Section */}
-        <Grid item xs={12}>
-          <Typography variant="h6" color="primary" sx={{ mb: 2 }}>
-            Basic Information
-          </Typography>
-        </Grid>
+      {/* Basic Information Section */}
+      <Typography variant="h6" color="primary" sx={{ mb: 3 }}>
+        Basic Information
+      </Typography>
 
-        <Grid item xs={6}>
-          <TextField
-            label="Emission Factor Name *"
-            fullWidth
-            value={formData.name}
-            onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-            helperText="Descriptive name for this emission factor"
-            size="small"
-            sx={{
-              "& .MuiFormHelperText-root": {
-                minHeight: "40px",
-                display: "flex",
-                alignItems: "center",
-              },
-            }}
-          />
-        </Grid>
+      {/* Name field - full width */}
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          label="Emission Factor Name *"
+          fullWidth
+          value={formData.name}
+          onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+          helperText="Descriptive name for this emission factor"
+          size="small"
+          sx={{
+            "& .MuiFormHelperText-root": {
+              minHeight: "40px",
+              display: "flex",
+              alignItems: "center",
+            },
+          }}
+        />
+      </Box>
 
-        <Grid item xs={12}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Category *</InputLabel>
-            <Select value={formData.category} onChange={(e) => handleCategoryChange(e.target.value)}>
-              {categories.map((cat) => (
-                <MenuItem key={cat.category} value={cat.category}>
-                  <Box>
-                    <Typography variant="body2">{cat.category_label}</Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      Scope {cat.scope} • {cat.valid_units?.length || 0} valid units
-                    </Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </Select>
-            <FormHelperText sx={{ minHeight: "40px", display: "flex", alignItems: "center" }}>
-              Choose the GHG Protocol category that best fits this emission source
-            </FormHelperText>
-          </FormControl>
-        </Grid>
+      {/* Category field - full width */}
+      <Box sx={{ mb: 3 }}>
+        <FormControl fullWidth size="small">
+          <InputLabel>Category *</InputLabel>
+          <Select value={formData.category} onChange={(e) => handleCategoryChange(e.target.value)}>
+            {categories.map((cat) => (
+              <MenuItem key={cat.category} value={cat.category}>
+                <Box>
+                  <Typography variant="body2">{cat.category_label}</Typography>
+                  <Typography variant="caption" color="textSecondary">
+                    Scope {cat.scope} • {cat.valid_units?.length || 0} valid units
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))}
+          </Select>
+          <FormHelperText sx={{ minHeight: "40px", display: "flex", alignItems: "center" }}>
+            Choose the GHG Protocol category that best fits this emission source
+          </FormHelperText>
+        </FormControl>
+      </Box>
 
-        <Grid item xs={6}>
+      {/* Emission Factor Value and Unit - side by side */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+        <Box sx={{ flex: 1 }}>
           <TextField
             label="Emission Factor Value *"
             type="number"
@@ -470,9 +478,8 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
               },
             }}
           />
-        </Grid>
-
-        <Grid item xs={6}>
+        </Box>
+        <Box sx={{ flex: 1 }}>
           <FormControl fullWidth size="small">
             <InputLabel>Unit *</InputLabel>
             <Select
@@ -492,9 +499,12 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
                 : `Valid units for ${formData.category || "selected category"}`}
             </FormHelperText>
           </FormControl>
-        </Grid>
+        </Box>
+      </Box>
 
-        <Grid item xs={6}>
+      {/* Source and Year - side by side */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+        <Box sx={{ flex: 1 }}>
           <TextField
             label="Source *"
             fullWidth
@@ -511,9 +521,8 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
               },
             }}
           />
-        </Grid>
-
-        <Grid item xs={6}>
+        </Box>
+        <Box sx={{ flex: 1 }}>
           <TextField
             label="Year *"
             type="number"
@@ -531,74 +540,78 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
               },
             }}
           />
-        </Grid>
+        </Box>
+      </Box>
 
-        <Grid item xs={12}>
-          <TextField
-            label="Description/Notes"
-            multiline
-            rows={3}
-            fullWidth
-            value={formData.description}
-            onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-            helperText="Additional context, assumptions, or notes about this emission factor"
-            size="small"
-            sx={{
-              "& .MuiFormHelperText-root": {
-                minHeight: "40px",
-                display: "flex",
-                alignItems: "center",
-              },
-            }}
-          />
-        </Grid>
+      {/* Description - full width */}
+      <Box sx={{ mb: 4 }}>
+        <TextField
+          label="Description/Notes"
+          multiline
+          rows={3}
+          fullWidth
+          value={formData.description}
+          onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+          helperText="Additional context, assumptions, or notes about this emission factor"
+          size="small"
+          sx={{
+            "& .MuiFormHelperText-root": {
+              minHeight: "40px",
+              display: "flex",
+              alignItems: "center",
+            },
+          }}
+        />
+      </Box>
 
-        {/* Uncertainty Analysis Section */}
-        <Grid item xs={12}>
-          <Divider sx={{ my: 2 }} />
-        </Grid>
-
-        <Grid item xs={12}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-            <Typography variant="h6" color="primary">
-              Uncertainty Analysis
-            </Typography>
-            <Chip label="Brightway2" size="small" variant="outlined" color="primary" />
-          </Box>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            Configure statistical distribution for uncertainty and sensitivity analysis
+      {/* Uncertainty Analysis Section */}
+      <Divider sx={{ my: 3 }} />
+      
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+          <Typography variant="h6" color="primary">
+            Uncertainty Analysis
           </Typography>
-        </Grid>
+          <Chip label="Brightway2" size="small" variant="outlined" color="primary" />
+        </Box>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+          Configure statistical distribution for uncertainty and sensitivity analysis
+        </Typography>
+      </Box>
 
-        {/* Uncertainty type to be full width below the section header */}
-        <Grid item xs={12}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Uncertainty Type</InputLabel>
-            <Select
-              value={formData.uncertainty_type}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  uncertainty_type: Number.parseInt(e.target.value),
-                  uncertainty_params: {}, // Reset params when type changes
-                }))
-              }
-            >
-              <MenuItem value={0}>No uncertainty</MenuItem>
-              <MenuItem value={1}>Lognormal</MenuItem>
-              <MenuItem value={2}>Normal</MenuItem>
-              <MenuItem value={3}>Uniform</MenuItem>
-              <MenuItem value={4}>Triangular</MenuItem>
-              <MenuItem value={5}>Beta</MenuItem>
-            </Select>
-            <FormHelperText sx={{ minHeight: "40px", display: "flex", alignItems: "center" }}>
-              Select statistical distribution for uncertainty analysis
-            </FormHelperText>
-          </FormControl>
-        </Grid>
+      {/* Uncertainty Type - full width */}
+      <Box sx={{ mb: 3 }}>
+        <FormControl fullWidth size="small">
+          <InputLabel>Uncertainty Type</InputLabel>
+          <Select
+            value={formData.uncertainty_type}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                uncertainty_type: Number.parseInt(e.target.value),
+                uncertainty_params: {}, // Reset params when type changes
+              }))
+            }
+          >
+            <MenuItem value={0}>No uncertainty</MenuItem>
+            <MenuItem value={1}>Lognormal</MenuItem>
+            <MenuItem value={2}>Normal</MenuItem>
+            <MenuItem value={3}>Uniform</MenuItem>
+            <MenuItem value={4}>Triangular</MenuItem>
+            <MenuItem value={5}>Beta</MenuItem>
+          </Select>
+          <FormHelperText sx={{ minHeight: "40px", display: "flex", alignItems: "center" }}>
+            Select statistical distribution for uncertainty analysis
+          </FormHelperText>
+        </FormControl>
+      </Box>
 
-        {renderUncertaintyParameters()}
-      </Grid>
+      {/* Uncertainty Parameters */}
+      {formData.uncertainty_type > 0 && (
+        <Box sx={{ mb: 3 }}>
+          {renderUncertaintyParameters()}
+        </Box>
+      )}
 
       {/* Display valid units as chips */}
       {validUnits.length > 0 && (
@@ -623,7 +636,7 @@ const EmissionFactorEntry = ({ open, onClose, onSuccess }) => {
   )
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="md">
       <DialogTitle>
         <Typography variant="h6">Add Emission Factor</Typography>
         <Typography variant="body2" color="textSecondary">

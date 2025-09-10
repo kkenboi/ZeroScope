@@ -6,7 +6,6 @@ import {
   CardContent,
   Typography,
   Button,
-  Grid,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -15,16 +14,14 @@ import {
   Chip,
   Avatar,
   CardHeader,
-  Fade,
-  Backdrop,
 } from "@mui/material";
 import {
   Add as AddIcon,
-  Visibility as ViewIcon,
   Delete as DeleteIcon,
   FolderOpen as ProjectIcon,
   Schedule as TimeIcon,
 } from "@mui/icons-material";
+import ProjectDialog from "../components/ProjectDialog";
 
 function Projects() {
     const [projects, setProjects] = useState([]);
@@ -235,70 +232,14 @@ function Projects() {
           }
         </Box>
 
-        {/* Preview Dialog */}
-        <Dialog
+        {/* Enhanced Project Dialog */}
+        <ProjectDialog
           open={previewDialog}
           onClose={() => setPreviewDialog(false)}
-          maxWidth="md"
-          fullWidth
-          TransitionComponent={Fade}
-          BackdropComponent={Backdrop}
-          BackdropProps={{
-            sx: { backgroundColor: "rgba(0, 0, 0, 0.7)" },
-          }}
-          PaperProps={{
-            sx: { borderRadius: 3, minHeight: 400 },
-          }}
-        >
-          {selectedProject && (
-            <>
-              <DialogTitle sx={{ pb: 1 }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  <Avatar sx={{ bgcolor: "primary.main" }}>
-                    <ProjectIcon />
-                  </Avatar>
-                  <Box>
-                    <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                      {selectedProject.name}
-                    </Typography>
-                    <Chip
-                      label={selectedProject.status}
-                      color={getStatusColor(selectedProject.status)}
-                      size="small"
-                      sx={{ mt: 1 }}
-                    />
-                  </Box>
-                </Box>
-              </DialogTitle>
-              <DialogContent>
-                <Typography variant="body1" sx={{ mb: 3 }}>
-                  {selectedProject.description}
-                </Typography>
-                <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    <strong>Last Modified:</strong> {selectedProject.last_modified ? formatDate(selectedProject.last_modified) : 'N/A'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    <strong>Progress:</strong> {selectedProject.progress}%
-                  </Typography>
-                </Box>
-              </DialogContent>
-              <DialogActions sx={{ p: 3, gap: 1 }}>
-                <Button onClick={handleDeleteClick} color="error" startIcon={<DeleteIcon />}>
-                  Delete
-                </Button>
-                <Button
-                  onClick={() => handleViewDetails(selectedProject.project_id)}
-                  variant="contained"
-                  startIcon={<ViewIcon />}
-                  sx={{ borderRadius: 2 }}
-                >
-                  View Details
-                </Button>
-              </DialogActions>
-            </>
-          )}
-        </Dialog>
+          project={selectedProject}
+          onDelete={handleDeleteClick}
+          onViewDetails={handleViewDetails}
+        />
 
         {/* Delete Confirmation Dialog */}
         <Dialog
