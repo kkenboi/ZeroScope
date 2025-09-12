@@ -49,96 +49,65 @@ class EmissionFactor(models.Model):
     """
     Clean, user-focused emission factor model aligned with GHG Protocol.
     All factors standardized to kgCO₂e for consistent calculations.
-    Formula: Emissions = Activity Data × Emission Factor
+    Formula: Emissions = Activity Data x Emission Factor
     """
     
     # GHG Protocol Categories - Scope 1, 2, 3
     CATEGORY_CHOICES = [
         # === SCOPE 1: Direct Emissions ===
-        ('fuel_combustion', 'Fuel Combustion'),
-        ('company_vehicles', 'Company-Owned Vehicles'),
-        ('refrigerants_fugitive', 'Refrigerants & Fugitive Emissions'),
-        ('process_emissions', 'Industrial Process Emissions'),
+        ('stationary_combustion', 'Stationary Combustion'),
+        ('mobile_combustion', 'Mobile Combustion'),
+        ('fugitive_emissions', 'Fugitive Emissions'),
+        ('process_emissions', 'Process Emissions'),
         
-        # === SCOPE 2: Indirect Energy Emissions ===
-        ('electricity_consumption', 'Electricity Consumption'),
-        ('purchased_steam_heat_cooling', 'Purchased Steam/Heat/Cooling'),
+        # === SCOPE 2: Indirect, Purchased Energy ===
+        ('purchased_electricity', 'Purchased Electricity'),
+        ('purchased_heat_steam_cooling', 'Purchased Heat, Steam, or Cooling'),
         
-        # === SCOPE 3: Other Indirect Emissions ===
-        ('purchased_goods_materials', 'Purchased Goods & Materials (Cat 1)'),
-        ('capital_goods', 'Capital Goods (Cat 2)'),
-        ('fuel_energy_related', 'Fuel & Energy Related Activities (Cat 3)'),
-        ('upstream_transport', 'Upstream Transportation & Distribution (Cat 4)'),
-        ('waste_generated', 'Waste Generated in Operations (Cat 5)'),
-        ('business_travel', 'Business Travel (Cat 6)'),
-        ('employee_commuting', 'Employee Commuting (Cat 7)'),
-        ('upstream_leased_assets', 'Upstream Leased Assets (Cat 8)'),
-        ('downstream_transport', 'Downstream Transportation & Distribution (Cat 9)'),
-        ('processing_sold_products', 'Processing of Sold Products (Cat 10)'),
-        ('use_sold_products', 'Use of Sold Products (Cat 11)'),
-        ('end_of_life_sold_products', 'End-of-Life Treatment of Sold Products (Cat 12)'),
-        ('downstream_leased_assets', 'Downstream Leased Assets (Cat 13)'),
-        ('franchises', 'Franchises (Cat 14)'),
-        ('investments', 'Investments (Cat 15)'),
-        
-        # === SPECIAL CATEGORIES ===
-        ('water_supply_treatment', 'Water Supply & Treatment'),
-        ('spend_based_fallback', 'Spend-Based Calculation'),
+        # === SCOPE 3: Other Indirect, Value Chain ===
+        ('purchased_goods_services', 'Purchased Goods & Services'),
+        ('capital_goods', 'Capital Goods'),
+        ('fuel_energy_related', 'Fuel- and Energy-Related Activities'),
+        ('upstream_transport', 'Upstream Transportation & Distribution'),
+        ('waste_generated', 'Waste Generated in Operations'),
+        ('business_travel', 'Business Travel'),
+        ('employee_commuting', 'Employee Commuting'),
+        ('upstream_leased_assets', 'Upstream Leased Assets'),
+        ('downstream_transport', 'Downstream Transportation & Distribution'),
+        ('processing_sold_products', 'Processing of Sold Products'),
+        ('use_sold_products', 'Use of Sold Products'),
+        ('end_of_life_sold_products', 'End-of-Life Treatment of Sold Products'),
+        ('downstream_leased_assets', 'Downstream Leased Assets'),
+        ('franchises', 'Franchises'),
+        ('investments', 'Investments'),
     ]
     
-    # Scope mapping for categories
-    CATEGORY_SCOPES = {
-        'fuel_combustion': 1,
-        'company_vehicles': 1,
-        'refrigerants_fugitive': 1,
-        'process_emissions': 1,
-        'electricity_consumption': 2,
-        'purchased_steam_heat_cooling': 2,
-        'purchased_goods_materials': 3,
-        'capital_goods': 3,
-        'fuel_energy_related': 3,
-        'upstream_transport': 3,
-        'waste_generated': 3,
-        'business_travel': 3,
-        'employee_commuting': 3,
-        'upstream_leased_assets': 3,
-        'downstream_transport': 3,
-        'processing_sold_products': 3,
-        'use_sold_products': 3,
-        'end_of_life_sold_products': 3,
-        'downstream_leased_assets': 3,
-        'franchises': 3,
-        'investments': 3,
-        'water_supply_treatment': 3,
-        'spend_based_fallback': 3,
-    }
+    # Scope 3 specific categories (15 categories as per GHG Protocol) - This is now redundant
+    # since we're mapping directly to main categories, but keeping for backwards compatibility
+    SCOPE_3_CATEGORY_CHOICES = [
+        ('purchased_goods_services', 'Purchased Goods & Services'),
+        ('capital_goods', 'Capital Goods'),
+        ('fuel_energy_related', 'Fuel- and Energy-Related Activities'),
+        ('upstream_transport', 'Upstream Transportation & Distribution'),
+        ('waste_generated', 'Waste Generated in Operations'),
+        ('business_travel', 'Business Travel'),
+        ('employee_commuting', 'Employee Commuting'),
+        ('upstream_leased_assets', 'Upstream Leased Assets'),
+        ('downstream_transport', 'Downstream Transportation & Distribution'),
+        ('processing_sold_products', 'Processing of Sold Products'),
+        ('use_sold_products', 'Use of Sold Products'),
+        ('end_of_life_sold_products', 'End-of-Life Treatment of Sold Products'),
+        ('downstream_leased_assets', 'Downstream Leased Assets'),
+        ('franchises', 'Franchises'),
+        ('investments', 'Investments'),
+    ]
     
-    # Valid units per category (enforced validation)
-    CATEGORY_UNITS = {
-        'fuel_combustion': ['kg', 'tonne', 'L', 'm³', 'MJ', 'GJ', 'TJ'],
-        'company_vehicles': ['L', 'kg', 'km', 'vehicle-km'],
-        'refrigerants_fugitive': ['kg', 'tonne'],
-        'process_emissions': ['kg', 'tonne', 'unit', 'batch'],
-        'electricity_consumption': ['kWh', 'MWh', 'GWh'],
-        'purchased_steam_heat_cooling': ['MJ', 'GJ', 'TJ', 'kWh', 'MWh'],
-        'purchased_goods_materials': ['kg', 'tonne', 'm³', 'unit', 'piece', '$', '€', '£'],
-        'capital_goods': ['$', '€', '£', 'unit', 'piece'],
-        'fuel_energy_related': ['kWh', 'MWh', 'L', 'kg', 'tonne', 'MJ', 'GJ'],
-        'upstream_transport': ['tonne-km', 't-km', 'm³-km', '$', '€', '£'],
-        'waste_generated': ['kg', 'tonne', 'm³'],
-        'business_travel': ['km', 'passenger-km', '$', '€', '£'],
-        'employee_commuting': ['km', 'passenger-km', '$', '€', '£'],
-        'upstream_leased_assets': ['$', '€', '£', 'm²', 'unit'],
-        'downstream_transport': ['tonne-km', 't-km', 'm³-km', '$', '€', '£'],
-        'processing_sold_products': ['kg', 'tonne', '$', '€', '£'],
-        'use_sold_products': ['kWh', 'MWh', 'MJ', 'GJ', 'unit', 'piece'],
-        'end_of_life_sold_products': ['kg', 'tonne', 'm³'],
-        'downstream_leased_assets': ['$', '€', '£', 'm²', 'unit'],
-        'franchises': ['$', '€', '£', 'unit'],
-        'investments': ['$', '€', '£'],
-        'water_supply_treatment': ['m³', 'L'],
-        'spend_based_fallback': ['$', '€', '£', 'local_currency'],
-    }
+    # Scope choices
+    SCOPE_CHOICES = [
+        (1, 'Scope 1'),
+        (2, 'Scope 2'),
+        (3, 'Scope 3'),
+    ]
     
     # Uncertainty type choices for Brightway2 integration
     UNCERTAINTY_TYPE_CHOICES = [
@@ -183,6 +152,34 @@ class EmissionFactor(models.Model):
         help_text="Statistical distribution parameters (e.g., {'mean': x, 'sigma': y, 'min': z, 'max': w})"
     )
     
+    # === MAPPING AND SCOPE FIELDS ===
+    # Store original imported data for auditing
+    imported_category = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Original category from the source database (for auditing)"
+    )
+    imported_sub_category = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Original sub-category from the source database (for auditing)"
+    )
+    
+    # Applicable scopes and category
+    applicable_scopes = models.JSONField(
+        default=list,
+        help_text="List of applicable GHG Protocol Scopes [1, 2, 3] where this factor can be used"
+    )
+    scope_3_category = models.CharField(
+        max_length=50,
+        choices=SCOPE_3_CATEGORY_CHOICES,
+        blank=True,
+        null=True,
+        help_text="Specific Scope 3 category (required if any of applicable scopes is 3)"
+    )
+    
     # System fields
     created_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True)
@@ -197,31 +194,9 @@ class EmissionFactor(models.Model):
 
     # === UTILITY METHODS ===
     
-    @property
-    def scope(self):
-        """Get the GHG Protocol scope for this category"""
-        return self.CATEGORY_SCOPES.get(self.category, None)
-    
-    @property
-    def scope_display(self):
-        """Get human-readable scope"""
-        scope_num = self.scope
-        if scope_num:
-            return f"Scope {scope_num}"
-        return "Unknown Scope"
-    
     def clean(self):
         """Validation logic for the emission factor"""
         from django.core.exceptions import ValidationError
-        
-        # Validate unit against category
-        if self.category and self.unit:
-            valid_units = self.get_valid_units_for_category(self.category)
-            if valid_units and self.unit not in valid_units:
-                raise ValidationError({
-                    'unit': f"Unit '{self.unit}' is not valid for category '{self.get_category_display()}'. "
-                           f"Valid units are: {', '.join(valid_units)}"
-                })
         
         # Validate emission factor value
         if self.emission_factor_value is not None and self.emission_factor_value <= 0:
@@ -234,6 +209,13 @@ class EmissionFactor(models.Model):
             raise ValidationError({
                 'year': f'Year must be between 1990 and {timezone.now().year + 5}'
             })
+        
+        # Validate scope 3 category requirement (keeping for backwards compatibility but not enforcing)
+        # Note: scope_3_category is now redundant since categories directly map to scopes
+        # if 3 in (self.applicable_scopes or []) and not self.scope_3_category:
+        #     raise ValidationError({
+        #         'scope_3_category': 'Scope 3 category is required when scope 3 is in applicable scopes'
+        #     })
         
         # Validate uncertainty parameters based on uncertainty type
         if self.uncertainty_type and self.uncertainty_type > 0:
@@ -261,25 +243,6 @@ class EmissionFactor(models.Model):
             5: ['min', 'max', 'alpha', 'beta'],  # Beta: needs min, max, alpha, beta
         }
         return param_requirements.get(uncertainty_type, [])
-    
-    @classmethod
-    def get_valid_units_for_category(cls, category):
-        """Get valid units for a given category"""
-        return cls.CATEGORY_UNITS.get(category, [])
-    
-    @classmethod
-    def get_categories_by_scope(cls, scope):
-        """Get all categories for a specific scope (1, 2, or 3)"""
-        return [
-            (key, value) for key, value in cls.CATEGORY_CHOICES 
-            if cls.CATEGORY_SCOPES.get(key) == scope
-        ]
-    
-    @classmethod
-    def validate_unit_for_category(cls, category, unit):
-        """Validate if a unit is valid for a given category"""
-        valid_units = cls.get_valid_units_for_category(category)
-        return not valid_units or unit in valid_units
     
     def save(self, *args, **kwargs):
         """Save with validation"""

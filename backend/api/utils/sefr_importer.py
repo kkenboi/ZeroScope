@@ -24,15 +24,28 @@ class SEFRExcelImporter:
     
     # Map SEFR categories to our new clean categories
     CATEGORY_MAPPING = {
-        'Building Equipment': 'purchased_goods_materials',  # Map to Scope 3 Cat 1
-        'Building Materials': 'purchased_goods_materials',   # Map to Scope 3 Cat 1
-        'Fuel': 'fuel_combustion',                          # Map to Scope 1
-        'Greenhouse Gases': 'refrigerants_fugitive',        # Map to Scope 1
-        'Land Transport': 'business_travel',                 # Map to Scope 3 Cat 6
-        'Purchased Energy': 'electricity_consumption',       # Map to Scope 2
+        'Building Equipment': 'purchased_goods_services',  # Map to Scope 3 Cat 1
+        'Building Materials': 'purchased_goods_services',   # Map to Scope 3 Cat 1
+        'Fuel': 'stationary_combustion',                    # Map to Scope 1 - Stationary Combustion
+        'Greenhouse Gases': 'fugitive_emissions',           # Map to Scope 1 - Fugitive Emissions
+        'Land Transport': 'mobile_combustion',              # Map to Scope 1 - Mobile Combustion (can also be business travel)
+        'Purchased Energy': 'purchased_electricity',        # Map to Scope 2 - Purchased Electricity
         'Waste': 'waste_generated',                         # Map to Scope 3 Cat 5
-        'Water': 'water_supply_treatment',                  # Map to Scope 3
-        'Other': 'purchased_goods_materials',               # Default to Scope 3 Cat 1
+        'Water': 'waste_generated',                         # Map to Scope 3 Cat 5 (water treatment often falls under waste)
+        'Other': 'purchased_goods_services',               # Default to Scope 3 Cat 1
+    }
+    
+    # Map categories to applicable scopes (scope_3_category is now redundant)
+    CATEGORY_TO_SCOPE_MAPPING = {
+        'Building Equipment': {'applicable_scopes': [3]},
+        'Building Materials': {'applicable_scopes': [3]},
+        'Fuel': {'applicable_scopes': [1]},
+        'Greenhouse Gases': {'applicable_scopes': [1]},
+        'Land Transport': {'applicable_scopes': [1, 3]},  # Can be Scope 1 (company vehicles) or Scope 3 (business travel)
+        'Purchased Energy': {'applicable_scopes': [2]},
+        'Waste': {'applicable_scopes': [3]},
+        'Water': {'applicable_scopes': [3]},
+        'Other': {'applicable_scopes': [1, 2, 3]},  # Could apply to any scope
     }
     
     def __init__(self, excel_file_path):
@@ -88,7 +101,12 @@ class SEFRExcelImporter:
         try:
             # Map SEFR category to our clean categories
             sefr_category = row['Category']
-            clean_category = self.CATEGORY_MAPPING.get(sefr_category, 'purchased_goods_materials')
+            sefr_sub_category = row.get('Sub-Category', None)
+            clean_category = self.CATEGORY_MAPPING.get(sefr_category, 'purchased_goods_services')
+            
+            # Get scope mapping
+            scope_mapping = self.CATEGORY_TO_SCOPE_MAPPING.get(sefr_category, {'applicable_scopes': [3]})
+            applicable_scopes = scope_mapping['applicable_scopes']
             
             # Check for existing factor (avoid duplicates)
             existing = EmissionFactor.objects.filter(
@@ -109,12 +127,8 @@ class SEFRExcelImporter:
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid emission factor value: {row['EF (kg CO2-eq per unit)']} - {str(e)}")
             
-            # Validate unit against category
+            # Unit - no validation, allow any unit
             unit = str(row['Unit']).strip()
-            valid_units = EmissionFactor.get_valid_units_for_category(clean_category)
-            if valid_units and unit not in valid_units:
-                # Log warning but still import (SEFR might have legacy units)
-                print(f"Warning: Unit '{unit}' not in valid units for category '{clean_category}': {valid_units}")
             
             # Create new emission factor with clean model structure
             factor_data = {
@@ -125,7 +139,9 @@ class SEFRExcelImporter:
                 'unit': unit,
                 'source': 'SEFR',
                 'year': int(row['Year']) if pd.notna(row.get('Year')) and str(row.get('Year')).isdigit() else 2023,  # Default to 2023 if no year
-                'entry_type': 'simple',  # SEFR imports are simple entries
+                'imported_category': sefr_category,
+                'imported_sub_category': sefr_sub_category,
+                'applicable_scopes': applicable_scopes,
             }
             
             # Create and save the factor
@@ -135,7 +151,7 @@ class SEFRExcelImporter:
             
             self.success_count += 1
             self.imported_factors.append(row['Activity'])
-            return f"Successfully imported: {row['Activity']} → {clean_category}"
+            return f"Successfully imported: {row['Activity']} → {clean_category} (Scopes {applicable_scopes})"
             
         except Exception as e:
             error_msg = f"Failed to import '{row.get('Activity', 'Unknown')}': {str(e)}"

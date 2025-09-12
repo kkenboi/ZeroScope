@@ -16,44 +16,36 @@ class UserSerializer(serializers.ModelSerializer):
 
 class EmissionFactorSerializer(serializers.ModelSerializer):
     """Base serializer for emission factors with full validation and Brightway2 uncertainty support"""
-    scope = serializers.ReadOnlyField()
-    scope_display = serializers.ReadOnlyField()
     category_display = serializers.CharField(source='get_category_display', read_only=True)
     uncertainty_type_display = serializers.CharField(source='get_uncertainty_type_display', read_only=True)
     has_uncertainty = serializers.ReadOnlyField()
     uncertainty_description = serializers.CharField(source='get_uncertainty_description', read_only=True)
-    valid_units = serializers.SerializerMethodField()
+    scope_3_category_display = serializers.CharField(source='get_scope_3_category_display', read_only=True)
 
     class Meta:
         model = EmissionFactor
         fields = [
-            'factor_id', 'name', 'category', 'category_display', 'scope', 'scope_display',
-            'emission_factor_value', 'unit', 'valid_units', 'source', 'year',
-            'description', 'sub_category', 'uncertainty_type', 'uncertainty_type_display',
-            'uncertainty_params', 'has_uncertainty', 'uncertainty_description',
+            'factor_id', 'name', 'category', 'category_display', 'applicable_scopes',
+            'scope_3_category', 'scope_3_category_display', 'emission_factor_value', 'unit', 
+            'source', 'year', 'description', 'sub_category', 'uncertainty_type', 
+            'uncertainty_type_display', 'uncertainty_params', 'has_uncertainty', 
+            'uncertainty_description', 'imported_category', 'imported_sub_category',
             'created_date', 'last_modified'
         ]
-        read_only_fields = ['factor_id', 'created_date', 'last_modified', 'scope', 'scope_display']
-
-    def get_valid_units(self, obj):
-        """Return valid units for this category"""
-        return EmissionFactor.get_valid_units_for_category(obj.category)
+        read_only_fields = ['factor_id', 'created_date', 'last_modified']
 
     def validate(self, attrs):
         """Comprehensive validation including uncertainty parameters"""
-        category = attrs.get('category')
-        unit = attrs.get('unit')
         uncertainty_type = attrs.get('uncertainty_type', 0)
         uncertainty_params = attrs.get('uncertainty_params')
+        applicable_scopes = attrs.get('applicable_scopes', [])
+        scope_3_category = attrs.get('scope_3_category')
         
-        # Unit-category validation
-        if category and unit:
-            if not EmissionFactor.validate_unit_for_category(category, unit):
-                valid_units = EmissionFactor.get_valid_units_for_category(category)
-                raise serializers.ValidationError({
-                    'unit': f"Unit '{unit}' is not valid for category '{category}'. "
-                           f"Valid units are: {', '.join(valid_units)}"
-                })
+        # Validate scope 3 category requirement
+        if 3 in applicable_scopes and not scope_3_category:
+            raise serializers.ValidationError({
+                'scope_3_category': 'Scope 3 category is required when scope 3 is in applicable scopes'
+            })
         
         # Uncertainty validation
         if uncertainty_type and uncertainty_type > 0:
@@ -87,24 +79,10 @@ class EmissionFactorSerializer(serializers.ModelSerializer):
 
 
 class CategoryInfoSerializer(serializers.Serializer):
-    """Serializer for category information with valid units"""
+    """Serializer for category information"""
     category = serializers.CharField()
     category_label = serializers.CharField()
     scope = serializers.IntegerField()
-    valid_units = serializers.ListField(child=serializers.CharField())
-
-
-class UnitValidationSerializer(serializers.Serializer):
-    """Serializer for unit validation requests"""
-    category = serializers.CharField()
-    unit = serializers.CharField()
-    
-    def validate_category(self, value):
-        """Validate that category exists"""
-        valid_categories = [choice[0] for choice in EmissionFactor.CATEGORY_CHOICES]
-        if value not in valid_categories:
-            raise serializers.ValidationError(f"Invalid category. Valid options: {', '.join(valid_categories)}")
-        return value
 
 class EmissionScopeSerializer(serializers.ModelSerializer):
     class Meta:

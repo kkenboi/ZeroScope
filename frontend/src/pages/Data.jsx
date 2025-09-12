@@ -17,15 +17,18 @@ import {
   CircularProgress,
   Pagination,
   TextField,
-  Chip
+  Chip,
+  Alert
 } from "@mui/material";
 import {
   Add as AddIcon,
   Settings,
   UploadFile as UploadFileIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  ArrowBack as ArrowBackIcon,
+  ArrowForward as ArrowForwardIcon
 } from "@mui/icons-material";
-import EmissionFactorEntry from "../components/EmissionFactorEntry";
+import AddEmissionFactorDialog from "../components/AddEmissionFactorDialog";
 
 function Data() {
     const [importStatus, setImportStatus] = useState("");
@@ -38,8 +41,10 @@ function Data() {
     const [pageCount, setPageCount] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const [deleteAllDialog, setDeleteAllDialog] = useState(false);
-    const [addDialogOpen, setAddDialogOpen] = useState(false);
     const fileInputRef = useRef();
+
+    // Add Emission Factor Dialog state
+    const [addFactorDialogOpen, setAddFactorDialogOpen] = useState(false);
 
     const PAGE_SIZE = 20; // if this is changed, change the settings.py
 
@@ -182,9 +187,17 @@ function Data() {
             });
     };
 
-    const handleEmissionFactorSuccess = () => {
-        setImportStatus("Emission factor added successfully!");
-        setImportSummary(null);
+    // Add Factor Dialog Functions
+    const handleAddFactorClick = () => {
+        setAddFactorDialogOpen(true);
+    };
+
+    const handleAddFactorDialogClose = () => {
+        setAddFactorDialogOpen(false);
+    };
+
+    const handleAddFactorSuccess = (newFactor) => {
+        setImportStatus('Emission factor created successfully!');
         refreshEmissionFactors();
     };
 
@@ -194,6 +207,15 @@ function Data() {
 
             {/* Import Status & File Button */}
             <Box sx={{ mt: 4, display: "flex", gap: 2 }}>
+                <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    sx={{ borderRadius: 2, mb: 2 }}
+                    onClick={handleAddFactorClick}
+                    color="primary"
+                >
+                    Add New Emission Factor
+                </Button>
                 <input
                     type="file"
                     accept=".xlsx,.xls"
@@ -217,14 +239,6 @@ function Data() {
                     onClick={handleDeleteAllClick}
                 >
                     Delete All Emission Factors
-                </Button>
-                <Button
-                    variant="contained"
-                    onClick={() => setAddDialogOpen(true)}
-                    startIcon={<AddIcon />}
-                    sx={{ borderRadius: 2, mb: 2 }}
-                >
-                    Add Emission Factor
                 </Button>
             </Box>
 
@@ -307,11 +321,11 @@ function Data() {
                 </DialogActions>
             </Dialog>
 
-            {/* Add Emission Factor Dialog */}
-            <EmissionFactorEntry
-                open={addDialogOpen}
-                onClose={() => setAddDialogOpen(false)}
-                onSuccess={handleEmissionFactorSuccess}
+            {/* Add New Emission Factor Dialog */}
+            <AddEmissionFactorDialog
+                open={addFactorDialogOpen}
+                onClose={handleAddFactorDialogClose}
+                onSuccess={handleAddFactorSuccess}
             />
 
             {/* Emission Factors Table */}
@@ -323,7 +337,7 @@ function Data() {
                     <TableRow>
                       <TableCell>Name</TableCell>
                       <TableCell>Category</TableCell>
-                      <TableCell>Scope</TableCell>
+                      <TableCell>Applicable Scopes</TableCell>
                       <TableCell>EF (kgCO₂e/unit)</TableCell>
                       <TableCell>Unit</TableCell>
                       <TableCell>Year</TableCell>
@@ -337,11 +351,16 @@ function Data() {
                         <TableCell>{factor.name}</TableCell>
                         <TableCell>{factor.category_display || factor.category}</TableCell>
                         <TableCell>
-                          <Chip 
-                            label={`Scope ${factor.scope}`} 
-                            size="small" 
-                            color={factor.scope === 1 ? "error" : factor.scope === 2 ? "warning" : "info"}
-                          />
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            {(factor.applicable_scopes || []).map((scope) => (
+                              <Chip 
+                                key={scope}
+                                label={`Scope ${scope}`} 
+                                size="small" 
+                                color={scope === 1 ? "error" : scope === 2 ? "warning" : "info"}
+                              />
+                            ))}
+                          </Box>
                         </TableCell>
                         <TableCell>
                           {factor.emission_factor_value !== undefined && factor.emission_factor_value !== null

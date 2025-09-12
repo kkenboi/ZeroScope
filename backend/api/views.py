@@ -9,7 +9,7 @@ from .serializer import UserSerializer, ProjectSerializer
 
 from .models import Project, EmissionScope, EmissionFactor, EmissionActivity, LCAProduct
 from .serializer import EmissionScopeSerializer, EmissionFactorSerializer, EmissionActivitySerializer
-from .serializer import CategoryInfoSerializer, UnitValidationSerializer
+from .serializer import CategoryInfoSerializer
 from .serializer import LCAProductSerializer
 
 from rest_framework.decorators import api_view, permission_classes
@@ -69,14 +69,10 @@ class EmissionFactorViewSet(viewsets.ModelViewSet):
         if category:
             queryset = queryset.filter(category=category)
         
-        # Filter by scope
+        # Filter by scope (using applicable_scopes field)
         scope = self.request.query_params.get('scope')
         if scope:
-            valid_categories = [
-                cat[0] for cat in EmissionFactor.CATEGORY_CHOICES
-                if EmissionFactor.CATEGORY_SCOPES.get(cat[0]) == int(scope)
-            ]
-            queryset = queryset.filter(category__in=valid_categories)
+            queryset = queryset.filter(applicable_scopes__contains=[int(scope)])
         
         # Filter by year
         year = self.request.query_params.get('year')
@@ -96,54 +92,12 @@ class EmissionFactorViewSet(viewsets.ModelViewSet):
         categories_info = []
         
         for category_key, category_label in EmissionFactor.CATEGORY_CHOICES:
-            scope = EmissionFactor.CATEGORY_SCOPES.get(category_key)
-            valid_units = EmissionFactor.get_valid_units_for_category(category_key)
-            
             categories_info.append({
                 'category': category_key,
                 'category_label': category_label,
-                'scope': scope,
-                'valid_units': valid_units
             })
         
         return Response(categories_info)
-    
-    @action(detail=False, methods=['get'])
-    def scopes(self, request):
-        """Get categories organized by scope"""
-        scopes = {1: [], 2: [], 3: []}
-        
-        for category_key, category_label in EmissionFactor.CATEGORY_CHOICES:
-            scope = EmissionFactor.CATEGORY_SCOPES.get(category_key)
-            if scope:
-                scopes[scope].append({
-                    'category': category_key,
-                    'category_label': category_label,
-                    'valid_units': EmissionFactor.get_valid_units_for_category(category_key)
-                })
-        
-        return Response(scopes)
-    
-    @action(detail=False, methods=['post'])
-    def validate_unit(self, request):
-        """Validate if a unit is valid for a category"""
-        serializer = UnitValidationSerializer(data=request.data)
-        if serializer.is_valid():
-            category = serializer.validated_data['category']
-            unit = serializer.validated_data['unit']
-            
-            is_valid = EmissionFactor.validate_unit_for_category(category, unit)
-            valid_units = EmissionFactor.get_valid_units_for_category(category)
-            
-            return Response({
-                'is_valid': is_valid,
-                'category': category,
-                'unit': unit,
-                'valid_units': valid_units,
-                'message': 'Valid unit' if is_valid else f'Invalid unit. Valid options: {", ".join(valid_units)}'
-            })
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['delete'])
     def delete_all(self, request):
