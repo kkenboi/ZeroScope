@@ -92,7 +92,12 @@ function ProjectDetails() {
         }
         
         console.log(`Loaded ${allFactors.length} emission factors`);
-        console.log(`Scope 3 factors: ${allFactors.filter(f => f.scope === 3).length}`);
+        console.log('Sample factor structure:', allFactors[0]);
+        console.log('Factors by scope:', {
+          scope1: allFactors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(1)).length,
+          scope2: allFactors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(2)).length,
+          scope3: allFactors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3)).length
+        });
         setFactors(allFactors);
       } catch (error) {
         console.error("Failed to fetch emission factors:", error);
@@ -107,7 +112,8 @@ function ProjectDetails() {
   const availableFactors = useMemo(() => {
     console.log(`Filtering factors: total=${factors.length}, scope=${newActivity.scope}, category=${newActivity.scope3Category}`);
     
-    let filtered = factors.filter(f => f.scope === newActivity.scope);
+    // Filter by applicable_scopes instead of scope
+    let filtered = factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(newActivity.scope));
     console.log(`After scope filter: ${filtered.length} factors`);
     
     // For Scope 3, also filter by category if one is selected
@@ -139,7 +145,7 @@ function ProjectDetails() {
     
     // Map EmissionFactor categories to EmissionActivity scope3_category values
     const categoryMapping = {
-      'purchased_goods_materials': 'purchased_goods_services',
+      'purchased_goods_services': 'purchased_goods_services',
       'capital_goods': 'capital_goods',
       'fuel_energy_related': 'fuel_energy_related', 
       'upstream_transport': 'upstream_transport',
@@ -327,26 +333,21 @@ function ProjectDetails() {
                 fullWidth
                 helperText="Filter emission factors by Scope 3 category"
               >
-                <MenuItem value="">All Categories ({factors.filter(f => f.scope === 3).length} factors)</MenuItem>
-                <MenuItem value="purchased_goods_materials">1. Purchased goods & materials ({factors.filter(f => f.scope === 3 && f.category === 'purchased_goods_materials').length} factors)</MenuItem>
-                <MenuItem value="capital_goods">2. Capital goods ({factors.filter(f => f.scope === 3 && f.category === 'capital_goods').length} factors)</MenuItem>
-                <MenuItem value="fuel_energy_related">3. Fuel & energy related activities ({factors.filter(f => f.scope === 3 && f.category === 'fuel_energy_related').length} factors)</MenuItem>
-                <MenuItem value="upstream_transport">4. Upstream transportation & distribution ({factors.filter(f => f.scope === 3 && f.category === 'upstream_transport').length} factors)</MenuItem>
-                <MenuItem value="waste_generated">5. Waste generated in operations ({factors.filter(f => f.scope === 3 && f.category === 'waste_generated').length} factors)</MenuItem>
-                <MenuItem value="business_travel">6. Business travel ({factors.filter(f => f.scope === 3 && f.category === 'business_travel').length} factors)</MenuItem>
-                <MenuItem value="employee_commuting">7. Employee commuting ({factors.filter(f => f.scope === 3 && f.category === 'employee_commuting').length} factors)</MenuItem>
-                <MenuItem value="upstream_leased_assets">8. Upstream leased assets ({factors.filter(f => f.scope === 3 && f.category === 'upstream_leased_assets').length} factors)</MenuItem>
-                <MenuItem value="downstream_transport">9. Downstream transportation & distribution ({factors.filter(f => f.scope === 3 && f.category === 'downstream_transport').length} factors)</MenuItem>
-                <MenuItem value="processing_sold_products">10. Processing of sold products ({factors.filter(f => f.scope === 3 && f.category === 'processing_sold_products').length} factors)</MenuItem>
-                <MenuItem value="use_sold_products">11. Use of sold products ({factors.filter(f => f.scope === 3 && f.category === 'use_sold_products').length} factors)</MenuItem>
-                <MenuItem value="end_of_life_sold_products">12. End-of-life treatment of sold products ({factors.filter(f => f.scope === 3 && f.category === 'end_of_life_sold_products').length} factors)</MenuItem>
-                <MenuItem value="downstream_leased_assets">13. Downstream leased assets ({factors.filter(f => f.scope === 3 && f.category === 'downstream_leased_assets').length} factors)</MenuItem>
-                <MenuItem value="franchises">14. Franchises ({factors.filter(f => f.scope === 3 && f.category === 'franchises').length} factors)</MenuItem>
-                <MenuItem value="investments">15. Investments ({factors.filter(f => f.scope === 3 && f.category === 'investments').length} factors)</MenuItem>
-                <MenuItem value="end_of_life_sold_products">12. End-of-life treatment of sold products ({factors.filter(f => f.scope === 3 && f.category === 'end_of_life_sold_products').length} factors)</MenuItem>
-                <MenuItem value="downstream_leased_assets">13. Downstream leased assets ({factors.filter(f => f.scope === 3 && f.category === 'downstream_leased_assets').length} factors)</MenuItem>
-                <MenuItem value="franchises">14. Franchises ({factors.filter(f => f.scope === 3 && f.category === 'franchises').length} factors)</MenuItem>
-                <MenuItem value="investments">15. Investments ({factors.filter(f => f.scope === 3 && f.category === 'investments').length} factors)</MenuItem>
+                <MenuItem value="purchased_goods_services">1. Purchased goods & services ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'purchased_goods_services').length} factors)</MenuItem>
+                <MenuItem value="capital_goods">2. Capital goods ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'capital_goods').length} factors)</MenuItem>
+                <MenuItem value="fuel_energy_related">3. Fuel & energy related activities ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'fuel_energy_related').length} factors)</MenuItem>
+                <MenuItem value="upstream_transport">4. Upstream transportation & distribution ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'upstream_transport').length} factors)</MenuItem>
+                <MenuItem value="waste_generated">5. Waste generated in operations ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'waste_generated').length} factors)</MenuItem>
+                <MenuItem value="business_travel">6. Business travel ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'business_travel').length} factors)</MenuItem>
+                <MenuItem value="employee_commuting">7. Employee commuting ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'employee_commuting').length} factors)</MenuItem>
+                <MenuItem value="upstream_leased_assets">8. Upstream leased assets ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'upstream_leased_assets').length} factors)</MenuItem>
+                <MenuItem value="downstream_transport">9. Downstream transportation & distribution ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'downstream_transport').length} factors)</MenuItem>
+                <MenuItem value="processing_sold_products">10. Processing of sold products ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'processing_sold_products').length} factors)</MenuItem>
+                <MenuItem value="use_sold_products">11. Use of sold products ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'use_sold_products').length} factors)</MenuItem>
+                <MenuItem value="end_of_life_sold_products">12. End-of-life treatment of sold products ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'end_of_life_sold_products').length} factors)</MenuItem>
+                <MenuItem value="downstream_leased_assets">13. Downstream leased assets ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'downstream_leased_assets').length} factors)</MenuItem>
+                <MenuItem value="franchises">14. Franchises ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'franchises').length} factors)</MenuItem>
+                <MenuItem value="investments">15. Investments ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'investments').length} factors)</MenuItem>
               </TextField>
             )}
 
@@ -361,8 +362,8 @@ function ProjectDetails() {
               disabled={availableFactors.length === 0}
               helperText={
                 availableFactors.length === 0 
-                  ? `No emission factors available for Scope ${newActivity.scope}${newActivity.scope === 3 && newActivity.scope3Category ? ` - ${newActivity.scope3Category}` : ''}. Total factors loaded: ${factors.length}` 
-                  : `${availableFactors.length} factors available (from ${factors.filter(f => f.scope === newActivity.scope).length} total Scope ${newActivity.scope} factors)`
+                  ? `No emission factors available for Scope ${newActivity.scope}${newActivity.scope === 3 && newActivity.scope3Category ? ` - ${newActivity.scope3Category}` : ''}` 
+                  : undefined
               }
             >
               {availableFactors.map(factor => (

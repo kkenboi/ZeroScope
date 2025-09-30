@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from .serializer import UserSerializer, ProjectSerializer
 
 from .models import Project, EmissionScope, EmissionFactor, EmissionActivity, LCAProduct
+from django.db.models import Q
 from .serializer import EmissionScopeSerializer, EmissionFactorSerializer, EmissionActivitySerializer
 from .serializer import CategoryInfoSerializer
 from .serializer import LCAProductSerializer
@@ -63,28 +64,90 @@ class EmissionFactorViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter emission factors based on query parameters"""
         queryset = EmissionFactor.objects.all()
-        
-        # Filter by category
-        category = self.request.query_params.get('category')
+
+        params = self.request.query_params
+
+        # Category: allow comma-separated list
+        category = params.get('category')
         if category:
-            queryset = queryset.filter(category=category)
-        
-        # Filter by scope (using applicable_scopes field)
-        scope = self.request.query_params.get('scope')
+            cats = [c.strip() for c in category.split(',') if c.strip()]
+            if cats:
+                queryset = queryset.filter(category__in=cats)
+
+        # Scope (JSONField contains) single value only for now
+        scope = params.get('scope')
         if scope:
-            queryset = queryset.filter(applicable_scopes__contains=[int(scope)])
-        
-        # Filter by year
-        year = self.request.query_params.get('year')
+            try:
+                queryset = queryset.filter(applicable_scopes__contains=[int(scope)])
+            except ValueError:
+                pass
+
+        # Year: allow single, list, or min/max range
+        year = params.get('year')
         if year:
-            queryset = queryset.filter(year=year)
-        
-        # Filter by source
-        source = self.request.query_params.get('source')
+            years = [y.strip() for y in year.split(',') if y.strip().isdigit()]
+            if years:
+                queryset = queryset.filter(year__in=years)
+
+        year_min = params.get('year_min')
+        year_max = params.get('year_max')
+        if year_min and year_min.isdigit():
+            queryset = queryset.filter(year__gte=int(year_min))
+        if year_max and year_max.isdigit():
+            queryset = queryset.filter(year__lte=int(year_max))
+
+        # Emission factor value range
+        ef_min = params.get('ef_min')
+        ef_max = params.get('ef_max')
+        if ef_min:
+            try:
+                queryset = queryset.filter(emission_factor_value__gte=ef_min)
+            except ValueError:
+                pass
+        if ef_max:
+            try:
+                queryset = queryset.filter(emission_factor_value__lte=ef_max)
+            except ValueError:
+                pass
+
+        # Source partial match
+        source = params.get('source')
         if source:
             queryset = queryset.filter(source__icontains=source)
-        
-        return queryset.order_by('category', 'name')
+
+        # Unit partial match
+        unit = params.get('unit')
+        if unit:
+            queryset = queryset.filter(unit__icontains=unit)
+
+        # General search across several text fields
+        search = params.get('search') or params.get('q')
+        if search:
+            search = search.strip()
+            if search:
+                queryset = queryset.filter(
+                    Q(name__icontains=search) |
+                    Q(description__icontains=search) |
+                    Q(source__icontains=search) |
+                    Q(imported_category__icontains=search) |
+                    Q(imported_sub_category__icontains=search)
+                )
+
+        # Sorting
+        sort = params.get('sort')
+        allowed_sort_fields = {
+            'name', 'year', 'emission_factor_value', 'category', 'source', 'created_date', 'last_modified'
+        }
+        if sort:
+            base = sort.lstrip('-')
+            if base in allowed_sort_fields:
+                queryset = queryset.order_by(sort)
+            else:
+                queryset = queryset.order_by('category', 'name')
+        else:
+            queryset = queryset.order_by('category', 'name')
+
+        return queryset
     
     @action(detail=False, methods=['get'])
     def categories(self, request):

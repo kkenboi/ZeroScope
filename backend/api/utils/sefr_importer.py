@@ -107,17 +107,25 @@ class SEFRExcelImporter:
             # Get scope mapping
             scope_mapping = self.CATEGORY_TO_SCOPE_MAPPING.get(sefr_category, {'applicable_scopes': [3]})
             applicable_scopes = scope_mapping['applicable_scopes']
+
+            # Determine year early so we can include it in duplicate detection
+            raw_year = row.get('Year')
+            if pd.notna(raw_year) and str(raw_year).isdigit():
+                year_value = int(raw_year)
+            else:
+                year_value = 2023  # default
             
-            # Check for existing factor (avoid duplicates)
+            # Check for existing factor (avoid duplicates) – now includes year so different years are allowed
             existing = EmissionFactor.objects.filter(
                 name=row['Activity'],
                 category=clean_category,
-                source='SEFR'
+                source='SEFR',
+                year=year_value
             ).first()
             
             if existing:
                 self.skipped_count += 1
-                return f"Skipped duplicate: {row['Activity']}"
+                return f"Skipped duplicate (same year {year_value}): {row['Activity']}"
             
             # Validate emission factor value
             try:
@@ -131,14 +139,22 @@ class SEFRExcelImporter:
             unit = str(row['Unit']).strip()
             
             # Create new emission factor with clean model structure
+            # Extract original description only (no injected prefix)
+            raw_desc = row.get('Description')
+            if raw_desc is not None:
+                desc_clean = str(raw_desc).strip()
+                if desc_clean.lower() in ('', 'nan', 'none'):
+                    desc_clean = None
+            else:
+                desc_clean = None
             factor_data = {
                 'name': str(row['Activity']).strip(),
                 'category': clean_category,
-                'description': f"Imported from SEFR. Original category: {sefr_category}. {row.get('Description', '')}" if row.get('Description') else f"Imported from SEFR. Original category: {sefr_category}",
+                'description': desc_clean,
                 'emission_factor_value': Decimal(str(ef_value)).quantize(Decimal('0.000001')),
                 'unit': unit,
                 'source': 'SEFR',
-                'year': int(row['Year']) if pd.notna(row.get('Year')) and str(row.get('Year')).isdigit() else 2023,  # Default to 2023 if no year
+                'year': year_value,
                 'imported_category': sefr_category,
                 'imported_sub_category': sefr_sub_category,
                 'applicable_scopes': applicable_scopes,
