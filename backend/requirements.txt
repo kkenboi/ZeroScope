@@ -1,4 +1,7 @@
 asgiref==3.9.1
+brightway25
+bw2data
+bw2io
 Django==5.2.4
 django-cors-headers==4.7.0
 djangorestframework==3.16.0

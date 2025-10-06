@@ -1,3 +1,4 @@
 # .gitignore (root)
 frontend/node_modules/
 frontend/dist/
+backend/data/elcd_3_2_greendelta_v2_18_correction_20220908.zip
