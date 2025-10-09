@@ -288,6 +288,18 @@ function Data() {
       setPage(1);
     };
 
+    const printBW2Versions = async () => {
+      const response = await fetch("/api/brightway2/print_versions/", {
+        method: "GET"
+      })
+
+      if (response.ok)
+      {
+        const data = await response.json();
+        console.log("BW2 Versions:", data);
+      }
+    }
+
     return (
         <div>
             <h1> Data </h1>
@@ -317,6 +329,14 @@ function Data() {
                     onClick={handleChooseFileClick}
                 >
                     Choose SEFR Excel File
+                </Button>
+                <Button
+                    variant="contained"
+                    startIcon={<UploadFileIcon />}
+                    sx={{ borderRadius: 2, mb: 2 }}
+                    onClick={printBW2Versions}
+                >
+                    Print Versions
                 </Button>
                 <Button
                     variant="outlined"

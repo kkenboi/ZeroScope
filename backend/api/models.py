@@ -345,7 +345,6 @@ class LCAProduct(models.Model):
     def __str__(self):
         return f"{self.name} ({self.project.name})"
 
-
 # Signal handlers to automatically update scope totals
 @receiver([post_save, post_delete], sender=EmissionActivity)
 def update_scope_total(sender, instance, **kwargs):

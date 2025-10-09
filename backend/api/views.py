@@ -269,7 +269,20 @@ class LCAProductViewSet(viewsets.ModelViewSet):
     lookup_field = "lca_id"
     permission_classes = [AllowAny]
 
-
+class BW2AdminViewSet(viewsets.ViewSet):
+    permission_classes = [AllowAny]
+    
+    @action(detail=False, methods=['GET'])
+    def print_versions(self, request):
+        from .utils.bw2_setup import BW2LCA
+        bw2Instance = BW2LCA()
+        result = bw2Instance.print_versions()
+        
+        return Response({
+            'message': 'Versions printed to console',
+            'versions': result  # assuming print_versions returns version info
+        }, status=status.HTTP_200_OK)
+            
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_settings(request):
