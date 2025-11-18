@@ -280,8 +280,325 @@ class BW2AdminViewSet(viewsets.ViewSet):
         
         return Response({
             'message': 'Versions printed to console',
-            'versions': result  # assuming print_versions returns version info
+            'versions': result
         }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['GET'])
+    def list_databases(self, request):
+        """List all databases in the BW2 project"""
+        try:
+            from .utils.bw2_setup import BW2LCA
+            bw2Instance = BW2LCA()
+            databases = bw2Instance.list_databases()
+            
+            return Response({
+                'success': True,
+                'databases': databases
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['POST'])
+    def import_ecoinvent(self, request):
+        """
+        Import ecoinvent database
+        Expected body: {
+            "version": "3.9.1",
+            "system_model": "cutoff",
+            "username": "your_username",
+            "password": "your_password"
+        }
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            version = request.data.get('version')
+            system_model = request.data.get('system_model', 'cutoff')
+            username = request.data.get('username')
+            password = request.data.get('password')
+            
+            if not version or not username or not password:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required fields: version, username, password'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate system_model
+            valid_models = ['cutoff', 'apos', 'consequential', 'EN15804']
+            if system_model not in valid_models:
+                return Response({
+                    'success': False,
+                    'error': f'Invalid system_model. Must be one of: {", ".join(valid_models)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            
+            # Import with progress tracking (simplified for now - can be enhanced with WebSocket)
+            result = bw2Instance.import_ecoinvent(
+                version=version,
+                system_model=system_model,
+                username=username,
+                password=password
+            )
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['DELETE'])
+    def delete_database(self, request):
+        """
+        Delete a database
+        Expected body: { "database_name": "ecoinvent-3.9.1-cutoff" }
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            database_name = request.data.get('database_name')
+            
+            if not database_name:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required field: database_name'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.delete_database(database_name)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['GET'])
+    def get_activities(self, request):
+        """
+        Get activities from a database
+        Query params: database_name, search (optional), limit, offset
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            database_name = request.query_params.get('database_name')
+            search = request.query_params.get('search', None)
+            limit = int(request.query_params.get('limit', 100))
+            offset = int(request.query_params.get('offset', 0))
+            
+            if not database_name:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required parameter: database_name'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.get_activities(database_name, search, limit, offset)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['GET'])
+    def get_exchanges(self, request):
+        """
+        Get exchanges for an activity
+        Query params: database_name, activity_code
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            database_name = request.query_params.get('database_name')
+            activity_code = request.query_params.get('activity_code')
+            
+            if not database_name or not activity_code:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required parameters: database_name, activity_code'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.get_exchanges(database_name, activity_code)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['GET'])
+    def search_activities_for_inputs(self, request):
+        """
+        Search for activities to use as inputs in custom products
+        Query params: search_term, limit (optional, default 50)
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            search_term = request.query_params.get('search_term', '')
+            limit = int(request.query_params.get('limit', 50))
+            
+            if not search_term:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required parameter: search_term'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.search_activities_for_inputs(search_term, limit)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['POST'])
+    def create_custom_product(self, request):
+        """
+        Create a custom LCA product
+        Expected body: {
+            "name": "My Custom Product",
+            "database": "custom_products" (optional),
+            "location": "GLO" (optional),
+            "unit": "kilogram" (optional),
+            "description": "Product description" (optional),
+            "inputs": [
+                {
+                    "database": "ecoinvent-3.9.1-cutoff",
+                    "code": "activity_code",
+                    "amount": 1.5,
+                    "type": "technosphere"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "Product output",
+                    "amount": 1.0,
+                    "type": "production"
+                }
+            ] (optional, defaults to single production output)
+        }
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            product_data = request.data
+            
+            if not product_data.get('name'):
+                return Response({
+                    'success': False,
+                    'error': 'Missing required field: name'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.create_custom_product(product_data)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_201_CREATED)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['GET'])
+    def verify_custom_product(self, request):
+        """
+        Verify and get details of a custom product
+        Query params: database_name, activity_code
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            database_name = request.query_params.get('database_name')
+            activity_code = request.query_params.get('activity_code')
+            
+            if not database_name or not activity_code:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required parameters: database_name, activity_code'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.verify_custom_product(database_name, activity_code)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['DELETE'])
+    def delete_custom_product(self, request):
+        """
+        Delete a custom product
+        Expected body: { "database_name": "custom_products", "activity_code": "code" }
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            database_name = request.data.get('database_name')
+            activity_code = request.data.get('activity_code')
+            
+            if not database_name or not activity_code:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required fields: database_name, activity_code'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.delete_custom_product(database_name, activity_code)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
 @api_view(['GET'])
 @permission_classes([AllowAny])

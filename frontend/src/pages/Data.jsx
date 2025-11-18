@@ -23,7 +23,9 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  IconButton
+  IconButton,
+  Tabs,
+  Tab
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -33,11 +35,25 @@ import {
   ArrowBack as ArrowBackIcon,
   ArrowForward as ArrowForwardIcon,
   Search as SearchIcon,
-  Clear as ClearIcon
+  Clear as ClearIcon,
+  Storage as StorageIcon,
+  Assessment as AssessmentIcon
 } from "@mui/icons-material";
 import AddEmissionFactorDialog from "../components/AddEmissionFactorDialog";
+import BrightwayImport from "../components/BrightwayImport";
+
+function TabPanel({ children, value, index }) {
+  return (
+    <div hidden={value !== index} style={{ paddingTop: 20 }}>
+      {value === index && <Box>{children}</Box>}
+    </div>
+  );
+}
 
 function Data() {
+    // Main Tab State
+    const [mainTabValue, setMainTabValue] = useState(0);
+    
     const [importStatus, setImportStatus] = useState("");
     const [importSummary, setImportSummary] = useState(null);
     const [excelFile, setExcelFile] = useState(null);
@@ -304,6 +320,16 @@ function Data() {
         <div>
             <h1> Data </h1>
 
+            {/* Main Tabs */}
+            <Box sx={{ borderBottom: 1, borderColor: "divider", mt: 2 }}>
+              <Tabs value={mainTabValue} onChange={(e, newValue) => setMainTabValue(newValue)}>
+                <Tab label="Emission Factors" icon={<AssessmentIcon />} iconPosition="start" />
+                <Tab label="Brightway2 LCA Databases" icon={<StorageIcon />} iconPosition="start" />
+              </Tabs>
+            </Box>
+
+            {/* Tab 1: Emission Factors */}
+            <TabPanel value={mainTabValue} index={0}>
             {/* Import Status & File Button */}
             <Box sx={{ mt: 4, display: "flex", gap: 2 }}>
                 <Button
@@ -607,6 +633,12 @@ function Data() {
                 Showing page {page} of {pageCount} ({totalCount} total emission factors)
               </Typography>
             </Box>
+            </TabPanel>
+
+            {/* Tab 2: Brightway2 LCA Databases */}
+            <TabPanel value={mainTabValue} index={1}>
+              <BrightwayImport />
+            </TabPanel>
         </div>
     );
 }
