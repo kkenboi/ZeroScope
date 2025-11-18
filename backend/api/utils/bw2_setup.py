@@ -14,6 +14,32 @@ class BW2LCA:
     def __init__(self):
         # Set the project to the fixed ZeroScope project
         bd.projects.set_current(self.PROJECT_NAME)
+    
+    def reset_project(self):
+        """
+        Reset the Brightway2 project by deleting all databases
+        WARNING: This will delete all LCA data in the project
+        """
+        try:
+            bd.projects.set_current(self.PROJECT_NAME)
+            db_names = list(bd.databases.keys())
+            
+            for db_name in db_names:
+                try:
+                    del bd.databases[db_name]
+                except Exception as e:
+                    print(f"Failed to delete {db_name}: {str(e)}")
+            
+            return {
+                'success': True,
+                'message': f'Successfully reset project. Deleted {len(db_names)} databases.',
+                'deleted_databases': db_names
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
 
     def print_versions(self):
         """Print versions of Brightway2 packages"""
@@ -54,18 +80,28 @@ class BW2LCA:
         db_name = f'ecoinvent-{version}-{system_model}'
         
         try:
-            # Check if database already exists
+            # Check if database already exists and clean it up if partially imported
             if db_name in bd.databases:
                 if progress_callback:
                     progress_callback({
-                        'status': 'error',
-                        'message': f'Database {db_name} already exists',
-                        'progress': 0
+                        'status': 'warning',
+                        'message': f'Database {db_name} already exists. Deleting and re-importing...',
+                        'progress': 5
                     })
-                return {
-                    'success': False,
-                    'error': f'Database {db_name} already exists. Please delete it first.'
-                }
+                # Delete the existing database to avoid conflicts
+                try:
+                    del bd.databases[db_name]
+                except Exception as delete_error:
+                    if progress_callback:
+                        progress_callback({
+                            'status': 'error',
+                            'message': f'Failed to delete existing database: {str(delete_error)}',
+                            'progress': 0
+                        })
+                    return {
+                        'success': False,
+                        'error': f'Database {db_name} exists and could not be deleted: {str(delete_error)}. Please delete it manually first.'
+                    }
             
             if progress_callback:
                 progress_callback({
@@ -75,12 +111,39 @@ class BW2LCA:
                 })
             
             # Import ecoinvent - this can take several minutes
-            bi.import_ecoinvent_release(
-                version=version,
-                system_model=system_model,
-                username=username,
-                password=password
-            )
+            try:
+                bi.import_ecoinvent_release(
+                    version=version,
+                    system_model=system_model,
+                    username=username,
+                    password=password
+                )
+            except Exception as import_error:
+                error_msg = str(import_error)
+                
+                # Handle UNIQUE constraint error specifically
+                if 'UNIQUE constraint failed' in error_msg or 'activitydataset' in error_msg.lower():
+                    # Try to clean up and provide helpful error message
+                    if db_name in bd.databases:
+                        try:
+                            del bd.databases[db_name]
+                        except:
+                            pass
+                    
+                    if progress_callback:
+                        progress_callback({
+                            'status': 'error',
+                            'message': 'Database corruption detected. Please try again or reset the Brightway2 project.',
+                            'progress': 0
+                        })
+                    
+                    return {
+                        'success': False,
+                        'error': 'Import failed due to database conflict. This can happen if a previous import was interrupted. Try deleting all ecoinvent databases and importing again, or reset the Brightway2 project data.'
+                    }
+                
+                # Re-raise other errors
+                raise import_error
             
             if progress_callback:
                 progress_callback({

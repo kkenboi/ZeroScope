@@ -386,6 +386,29 @@ class BW2AdminViewSet(viewsets.ViewSet):
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    @action(detail=False, methods=['POST'])
+    def reset_project(self, request):
+        """
+        Reset the entire Brightway2 project by deleting all databases
+        WARNING: This will delete all LCA data
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.reset_project()
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     @action(detail=False, methods=['GET'])
     def get_activities(self, request):
         """
