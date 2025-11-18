@@ -7,11 +7,11 @@ from django.http import JsonResponse
 from django.contrib.auth.models import User
 from .serializer import UserSerializer, ProjectSerializer
 
-from .models import Project, EmissionScope, EmissionFactor, EmissionActivity, LCAProduct
+from .models import Project, EmissionScope, EmissionFactor, EmissionActivity, LCAProduct, LCAActivity
 from django.db.models import Q
 from .serializer import EmissionScopeSerializer, EmissionFactorSerializer, EmissionActivitySerializer
 from .serializer import CategoryInfoSerializer
-from .serializer import LCAProductSerializer
+from .serializer import LCAProductSerializer, LCAActivitySerializer
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import action
@@ -268,6 +268,103 @@ class LCAProductViewSet(viewsets.ModelViewSet):
     serializer_class = LCAProductSerializer
     lookup_field = "lca_id"
     permission_classes = [AllowAny]
+
+
+class LCAActivityViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for LCA activities that use Brightway2 processes
+    Allows full LCA calculations with supply chain impacts
+    """
+    queryset = LCAActivity.objects.all()
+    serializer_class = LCAActivitySerializer
+    permission_classes = [AllowAny]
+    
+    @action(detail=True, methods=['POST'])
+    def calculate(self, request, pk=None):
+        """
+        Calculate LCA impact for this activity using Brightway2
+        """
+        try:
+            lca_activity = self.get_object()
+            
+            # Perform LCA calculation
+            impact = lca_activity.calculate_lca_impact()
+            
+            # Save the updated activity
+            lca_activity.save()
+            
+            return Response({
+                'success': True,
+                'activity_id': str(lca_activity.activity_id),
+                'activity_name': lca_activity.activity_name,
+                'calculated_emissions_kg': float(lca_activity.calculated_emissions),
+                'calculated_emissions_tco2e': float(lca_activity.get_emissions_tco2e()),
+                'quantity': float(lca_activity.quantity),
+                'unit': lca_activity.bw2_unit,
+                'last_calculated': lca_activity.last_calculated.isoformat() if lca_activity.last_calculated else None,
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['POST'])
+    def calculate_all(self, request):
+        """
+        Calculate LCA impact for all activities in a project or scope
+        Query params: project_id (required), scope_number (optional)
+        """
+        try:
+            project_id = request.data.get('project_id')
+            scope_number = request.data.get('scope_number')
+            
+            if not project_id:
+                return Response({
+                    'success': False,
+                    'error': 'project_id is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Filter activities
+            activities = LCAActivity.objects.filter(project_id=project_id)
+            if scope_number is not None:
+                activities = activities.filter(scope__scope_number=scope_number)
+            
+            results = []
+            errors = []
+            
+            for activity in activities:
+                try:
+                    impact = activity.calculate_lca_impact()
+                    activity.save()
+                    results.append({
+                        'activity_id': str(activity.activity_id),
+                        'activity_name': activity.activity_name,
+                        'success': True,
+                        'emissions_tco2e': float(activity.get_emissions_tco2e())
+                    })
+                except Exception as e:
+                    errors.append({
+                        'activity_id': str(activity.activity_id),
+                        'activity_name': activity.activity_name,
+                        'error': str(e)
+                    })
+            
+            return Response({
+                'success': True,
+                'calculated': len(results),
+                'failed': len(errors),
+                'results': results,
+                'errors': errors
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class BW2AdminViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]

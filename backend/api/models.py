@@ -34,10 +34,22 @@ class EmissionScope(models.Model):
         unique_together = ['project', 'scope_number']  # One scope per number per project
 
     def calculate_total_emissions(self):
-        """Calculate total from all activities in this scope"""
-        total = self.activities.aggregate(
+        """Calculate total from all activities (both emission factor and LCA activities) in this scope"""
+        from decimal import Decimal
+        
+        # Sum from regular emission activities (already in tCO₂e)
+        emission_total = self.activities.aggregate(
             total=models.Sum('calculated_emissions')
-        )['total'] or 0
+        )['total'] or Decimal('0')
+        
+        # Sum from LCA activities (in kgCO₂e, need to convert to tCO₂e)
+        lca_total_kg = self.lca_activities.aggregate(
+            total=models.Sum('calculated_emissions')
+        )['total'] or Decimal('0')
+        lca_total_tco2e = lca_total_kg / Decimal('1000')
+        
+        # Combine both
+        total = emission_total + lca_total_tco2e
         self.total_emissions_tco2e = total
         self.save()
         return total
@@ -345,9 +357,162 @@ class LCAProduct(models.Model):
     def __str__(self):
         return f"{self.name} ({self.project.name})"
 
+
+class LCAActivity(models.Model):
+    """
+    Represents an activity that uses a Brightway2 LCA product/process
+    instead of a simple emission factor. This allows full LCA calculations
+    with supply chain impacts.
+    """
+    activity_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="lca_activities")
+    scope = models.ForeignKey(EmissionScope, on_delete=models.CASCADE, related_name="lca_activities")
+    
+    # Activity details
+    activity_name = models.CharField(max_length=255, help_text="User-friendly name for this activity")
+    description = models.TextField(blank=True, null=True)
+    
+    # Brightway2 reference - points to a process/activity in BW2 database
+    bw2_database = models.CharField(max_length=255, help_text="Brightway2 database name (e.g., 'ecoinvent-3.9.1-cutoff')")
+    bw2_activity_code = models.CharField(max_length=255, help_text="Brightway2 activity code")
+    bw2_activity_name = models.CharField(max_length=500, blank=True, null=True, help_text="Cached name from Brightway2")
+    bw2_location = models.CharField(max_length=100, blank=True, null=True, help_text="Cached location from Brightway2")
+    bw2_unit = models.CharField(max_length=50, blank=True, null=True, help_text="Cached unit from Brightway2")
+    
+    # Calculation inputs
+    quantity = models.DecimalField(max_digits=15, decimal_places=6, help_text="Amount of the activity")
+    
+    # Optional: Impact method selection (default: IPCC GWP 100a)
+    impact_method = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Impact assessment method as tuple, e.g., ('IPCC 2013', 'climate change', 'GWP 100a')"
+    )
+    
+    # Results (cached from Brightway2 calculation)
+    calculated_emissions = models.DecimalField(
+        max_digits=15, 
+        decimal_places=6, 
+        default=0,
+        help_text="Calculated emissions in kgCO₂e (will be converted to tCO₂e for display)"
+    )
+    
+    # Optional: Scope 3 category
+    SCOPE3_CATEGORY_CHOICES = [
+        ("purchased_goods_services", "1. Purchased goods and services"),
+        ("capital_goods", "2. Capital goods"),
+        ("fuel_energy_related", "3. Fuel- and energy-related activities"),
+        ("upstream_transport", "4. Upstream transportation and distribution"),
+        ("waste_generated", "5. Waste generated in operations"),
+        ("business_travel", "6. Business travel"),
+        ("employee_commuting", "7. Employee commuting"),
+        ("leased_assets_upstream", "8. Upstream leased assets"),
+        ("downstream_transport", "9. Downstream transportation and distribution"),
+        ("processing_sold_products", "10. Processing of sold products"),
+        ("use_sold_products", "11. Use of sold products"),
+        ("end_of_life", "12. End-of-life treatment of sold products"),
+        ("leased_assets_downstream", "13. Downstream leased assets"),
+        ("franchises", "14. Franchises"),
+        ("investments", "15. Investments"),
+    ]
+    scope3_category = models.CharField(max_length=64, blank=True, null=True, choices=SCOPE3_CATEGORY_CHOICES)
+    
+    # Tracking
+    created_date = models.DateTimeField(auto_now_add=True)
+    last_modified = models.DateTimeField(auto_now=True)
+    last_calculated = models.DateTimeField(null=True, blank=True, help_text="When LCA calculation was last performed")
+    
+    class Meta:
+        verbose_name = "LCA Activity"
+        verbose_name_plural = "LCA Activities"
+        ordering = ['-created_date']
+    
+    def calculate_lca_impact(self):
+        """
+        Calculate the LCA impact using Brightway2
+        Returns the impact in kgCO₂e
+        """
+        try:
+            import bw2data as bd
+            import bw2calc as bc
+            from django.utils import timezone
+            
+            # Set Brightway2 project
+            bd.projects.set_current("ZeroScope_LCA")
+            
+            # Get the activity
+            if self.bw2_database not in bd.databases:
+                raise ValueError(f"Database '{self.bw2_database}' not found in Brightway2")
+            
+            db = bd.Database(self.bw2_database)
+            activity = db.get(self.bw2_activity_code)
+            
+            if not activity:
+                raise ValueError(f"Activity '{self.bw2_activity_code}' not found in database '{self.bw2_database}'")
+            
+            # Cache activity details
+            self.bw2_activity_name = activity.get('name', '')
+            self.bw2_location = activity.get('location', '')
+            self.bw2_unit = activity.get('unit', '')
+            
+            # Determine impact method - use default IPCC if not specified
+            if not self.impact_method or not self.impact_method.get('method'):
+                # Default to IPCC 2013 GWP 100a (ecoinvent format)
+                method = ('ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)')
+            else:
+                method = tuple(self.impact_method.get('method', []))
+            
+            # Create functional unit
+            functional_unit = {activity: float(self.quantity)}
+            
+            # Perform LCA calculation
+            lca = bc.LCA(functional_unit, method)
+            lca.lci()
+            lca.lcia()
+            
+            # Result is in the unit of the impact method (kgCO₂e for GWP)
+            impact = lca.score
+            
+            # Store result in kgCO₂e
+            self.calculated_emissions = Decimal(str(impact))
+            self.last_calculated = timezone.now()
+            
+            return impact
+            
+        except Exception as e:
+            import traceback
+            error_detail = traceback.format_exc()
+            raise Exception(f"LCA calculation failed: {str(e)}\n{error_detail}")
+    
+    def get_emissions_tco2e(self):
+        """Get emissions in tCO₂e (converted from kgCO₂e)"""
+        return self.calculated_emissions / Decimal("1000")
+    
+    def save(self, *args, **kwargs):
+        """
+        Override save to calculate LCA impact if needed
+        Note: Calculation can be expensive, so it's not automatic
+        """
+        super().save(*args, **kwargs)
+        
+        # Update scope total after saving
+        if self.scope:
+            self.scope.calculate_total_emissions()
+    
+    def __str__(self):
+        return f"{self.activity_name} - {self.get_emissions_tco2e()} tCO₂e (LCA)"
+
+
 # Signal handlers to automatically update scope totals
 @receiver([post_save, post_delete], sender=EmissionActivity)
-def update_scope_total(sender, instance, **kwargs):
-    """Automatically recalculate scope total when activity changes"""
+def update_scope_total_emission_activity(sender, instance, **kwargs):
+    """Automatically recalculate scope total when emission activity changes"""
+    if hasattr(instance, 'scope') and instance.scope:
+        instance.scope.calculate_total_emissions()
+
+
+@receiver([post_save, post_delete], sender=LCAActivity)
+def update_scope_total_lca_activity(sender, instance, **kwargs):
+    """Automatically recalculate scope total when LCA activity changes"""
     if hasattr(instance, 'scope') and instance.scope:
         instance.scope.calculate_total_emissions()

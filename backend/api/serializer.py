@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 from .models import Project
 from .models import EmissionScope, EmissionFactor, EmissionActivity
-from .models import LCAProduct
+from .models import LCAProduct, LCAActivity
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -166,14 +166,163 @@ class LCAProductSerializer(serializers.ModelSerializer):
         model = LCAProduct
         fields = ["lca_id", "name", "functional_unit", "total_carbon_footprint_per_unit"]
 
+
+class LCAActivitySerializer(serializers.ModelSerializer):
+    """Serializer for LCA activities using Brightway2 processes"""
+    scope_number = serializers.IntegerField(write_only=True, required=False)
+    scope = serializers.PrimaryKeyRelatedField(read_only=True)
+    emissions_tco2e = serializers.SerializerMethodField(read_only=True)
+    impact_method_display = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = LCAActivity
+        fields = [
+            "activity_id",
+            "project",
+            "scope",
+            "scope_number",
+            "activity_name",
+            "description",
+            "bw2_database",
+            "bw2_activity_code",
+            "bw2_activity_name",
+            "bw2_location",
+            "bw2_unit",
+            "quantity",
+            "impact_method",
+            "impact_method_display",
+            "calculated_emissions",
+            "emissions_tco2e",
+            "scope3_category",
+            "created_date",
+            "last_modified",
+            "last_calculated",
+        ]
+        read_only_fields = [
+            'activity_id', 
+            'bw2_activity_name', 
+            'bw2_location', 
+            'bw2_unit',
+            'calculated_emissions',
+            'created_date', 
+            'last_modified',
+            'last_calculated'
+        ]
+    
+    def get_emissions_tco2e(self, obj):
+        """Get emissions in tCO₂e for display"""
+        return float(obj.get_emissions_tco2e())
+    
+    def get_impact_method_display(self, obj):
+        """Get human-readable impact method"""
+        if obj.impact_method and obj.impact_method.get('method'):
+            method = obj.impact_method.get('method')
+            if isinstance(method, list):
+                return ' > '.join(method)
+            return str(method)
+        return 'IPCC 2013 > climate change > GWP 100a (default)'
+    
+    def create(self, validated_data):
+        """Create LCA activity and optionally calculate impact"""
+        scope_number = validated_data.pop("scope_number", None)
+        
+        # Handle scope creation/retrieval
+        if scope_number is not None:
+            project = validated_data.get("project")
+            if not isinstance(project, Project):
+                project = Project.objects.get(pk=project)
+                validated_data["project"] = project
+            scope_obj, _ = EmissionScope.objects.get_or_create(
+                project=project,
+                scope_number=scope_number,
+            )
+            validated_data["scope"] = scope_obj
+        
+        return super().create(validated_data)
+    
+    def validate(self, attrs):
+        """Validate LCA activity data"""
+        scope_number = attrs.get("scope_number")
+        
+        # If scope 3, require scope3_category
+        if scope_number == 3 and not attrs.get("scope3_category"):
+            raise serializers.ValidationError({
+                "scope3_category": "This field is required for Scope 3 activities."
+            })
+        
+        # Validate Brightway2 database and activity exist
+        bw2_database = attrs.get("bw2_database")
+        bw2_activity_code = attrs.get("bw2_activity_code")
+        
+        if bw2_database and bw2_activity_code:
+            try:
+                import bw2data as bd
+                bd.projects.set_current("ZeroScope_LCA")
+                
+                if bw2_database not in bd.databases:
+                    raise serializers.ValidationError({
+                        "bw2_database": f"Database '{bw2_database}' not found in Brightway2"
+                    })
+                
+                db = bd.Database(bw2_database)
+                activity = db.get(bw2_activity_code)
+                
+                if not activity:
+                    raise serializers.ValidationError({
+                        "bw2_activity_code": f"Activity code '{bw2_activity_code}' not found in database"
+                    })
+                    
+            except Exception as e:
+                if "not found" in str(e).lower():
+                    raise
+                # Other errors (like Brightway2 not configured) - allow for now
+                pass
+        
+        return attrs
+
+
+class LCAActivityListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for listing LCA activities"""
+    emissions_tco2e = serializers.SerializerMethodField(read_only=True)
+    impact_method_display = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = LCAActivity
+        fields = [
+            "activity_id",
+            "activity_name",
+            "description",
+            "bw2_database",
+            "bw2_activity_name",
+            "bw2_location",
+            "quantity",
+            "bw2_unit",
+            "emissions_tco2e",
+            "impact_method_display",
+            "last_calculated",
+        ]
+    
+    def get_emissions_tco2e(self, obj):
+        return float(obj.get_emissions_tco2e())
+    
+    def get_impact_method_display(self, obj):
+        if obj.impact_method and obj.impact_method.get('method'):
+            method = obj.impact_method.get('method')
+            if isinstance(method, list):
+                return ' > '.join(method)
+            return str(method)
+        return 'IPCC 2013 (default)'
+
+
 # This serialiser is dependent on the the other two serialisers
 class ProjectSerializer(serializers.ModelSerializer):
     class ScopeWithActivitiesSerializer(serializers.ModelSerializer):
         activities = EmissionActivityListSerializer(many=True, read_only=True)
+        lca_activities = LCAActivityListSerializer(many=True, read_only=True)
 
         class Meta:
             model = EmissionScope
-            fields = ["scope_id", "scope_number", "total_emissions_tco2e", "activities"]
+            fields = ["scope_id", "scope_number", "total_emissions_tco2e", "activities", "lca_activities"]
 
     scopes = ScopeWithActivitiesSerializer(many=True, read_only=True)
     lca_products = LCAProductSerializer(many=True, read_only=True)

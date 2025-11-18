@@ -21,10 +21,20 @@ import {
   DialogActions,
   Chip,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Alert,
+  IconButton,
 } from "@mui/material"
 import { BarChart } from "@mui/x-charts"
 import { DataGrid } from "@mui/x-data-grid"
-import { ArrowBack as BackIcon } from "@mui/icons-material"
+import { 
+  ArrowBack as BackIcon,
+  Calculate as CalculateIcon,
+  Science as ScienceIcon,
+  Delete as DeleteIcon,
+} from "@mui/icons-material"
+import LCAProductSearch from "../components/LCAProductSearch"
 
 function ProjectDetails() {
   const { projectID } = useParams()
@@ -37,6 +47,9 @@ function ProjectDetails() {
 
   // Form state for new activity dialog
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [activityType, setActivityType] = useState('emission_factor') // 'emission_factor' or 'lca'
+  const [lcaSearchOpen, setLcaSearchOpen] = useState(false)
+  const [selectedLCAProduct, setSelectedLCAProduct] = useState(null)
   const [newActivity, setNewActivity] = useState({
     scope: 1,
     activityName: "",
@@ -46,6 +59,7 @@ function ProjectDetails() {
     scope3Category: ""
   })
   const [selectedScopes, setSelectedScopes] = useState([1, 2, 3])
+  const [calculating, setCalculating] = useState(false)
 
   // Fetch project (with scopes + activities)
   useEffect(() => {
@@ -108,6 +122,36 @@ function ProjectDetails() {
     fetchAllFactors();
   }, [])
 
+  const handleDeleteActivity = async (activityId, activityType) => {
+    if (!window.confirm('Are you sure you want to delete this activity?')) {
+      return
+    }
+
+    try {
+      const endpoint = activityType === 'LCA' 
+        ? `/api/lca-activities/${activityId}/`
+        : `/api/activities/${activityId}/`
+      
+      const deleteResponse = await fetch(`http://localhost:8000${endpoint}`, {
+        method: 'DELETE',
+      })
+
+      if (!deleteResponse.ok) {
+        throw new Error('Failed to delete activity')
+      }
+
+      // Reload project data
+      const projectResponse = await fetch(`/api/projects/${projectID}/`)
+      if (projectResponse.ok) {
+        const data = await projectResponse.json()
+        setProject(data)
+      }
+    } catch (err) {
+      console.error('Error deleting activity:', err)
+      alert('Failed to delete activity. Please try again.')
+    }
+  }
+
   // Filtered factors based on selected scope and category
   const availableFactors = useMemo(() => {
     console.log(`Filtering factors: total=${factors.length}, scope=${newActivity.scope}, category=${newActivity.scope3Category}`);
@@ -125,8 +169,22 @@ function ProjectDetails() {
     return filtered;
   }, [factors, newActivity.scope, newActivity.scope3Category])
 
+  const handleLCAProductSelect = (product) => {
+    setSelectedLCAProduct(product);
+    setNewActivity(prev => ({
+      ...prev,
+      activityName: product.name,
+    }));
+  };
+
   const handleSubmit = async () => {
-    if (!newActivity.emissionFactorId) {
+    // Validation
+    if (activityType === 'lca' && !selectedLCAProduct) {
+      alert("Please select an LCA product")
+      return
+    }
+    
+    if (activityType === 'emission_factor' && !newActivity.emissionFactorId) {
       alert("Please select an emission factor")
       return
     }
@@ -141,73 +199,146 @@ function ProjectDetails() {
       return
     }
 
-    const selectedFactor = factors.find(f => f.factor_id === newActivity.emissionFactorId)
-    
-    // Map EmissionFactor categories to EmissionActivity scope3_category values
-    const categoryMapping = {
-      'purchased_goods_services': 'purchased_goods_services',
-      'capital_goods': 'capital_goods',
-      'fuel_energy_related': 'fuel_energy_related', 
-      'upstream_transport': 'upstream_transport',
-      'waste_generated': 'waste_generated',
-      'business_travel': 'business_travel',
-      'employee_commuting': 'employee_commuting',
-      'upstream_leased_assets': 'leased_assets_upstream',
-      'downstream_transport': 'downstream_transport',
-      'processing_sold_products': 'processing_sold_products',
-      'use_sold_products': 'use_sold_products',
-      'end_of_life_sold_products': 'end_of_life',
-      'downstream_leased_assets': 'leased_assets_downstream',
-      'franchises': 'franchises',
-      'investments': 'investments'
-    }
-    
-    const payload = {
-      project: project.project_id,
-      scope_number: newActivity.scope,
-      activity_name: newActivity.activityName,
-      description: newActivity.description,
-      quantity: Number(newActivity.quantity),
-      unit: selectedFactor.unit,
-      emission_factor_id: selectedFactor.factor_id,
-    }
-
-    if (newActivity.scope === 3 && newActivity.scope3Category) {
-      // Map the EmissionFactor category to EmissionActivity scope3_category
-      payload.scope3_category = categoryMapping[newActivity.scope3Category] || newActivity.scope3Category
-    }
+    setCalculating(true);
 
     try {
-      const res = await fetch("/api/emission-activities/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
+      let endpoint, payload, activityId;
 
-      if (res.ok) {
-        alert("Activity added successfully!")
-        // Reset form
-        setNewActivity({
-          scope: 1,
-          activityName: "",
-          description: "",
-          quantity: "",
-          emissionFactorId: "",
-          scope3Category: ""
-        })
-        setDialogOpen(false)
+      if (activityType === 'lca') {
+        // Create LCA Activity
+        endpoint = '/api/lca-activities/';
+        payload = {
+          project: project.project_id,
+          scope_number: newActivity.scope,
+          activity_name: newActivity.activityName,
+          description: newActivity.description,
+          bw2_database: selectedLCAProduct.database,
+          bw2_activity_code: selectedLCAProduct.code,
+          quantity: Number(newActivity.quantity),
+          impact_method: {
+            method: ['ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)']
+          },
+        };
 
-        // Refresh project details
-        const refreshed = await fetch(`/api/projects/${projectID}/`)
-        if (refreshed.ok) {
-          setProject(await refreshed.json())
+        if (newActivity.scope === 3 && newActivity.scope3Category) {
+          const categoryMapping = {
+            'purchased_goods_services': 'purchased_goods_services',
+            'capital_goods': 'capital_goods',
+            'fuel_energy_related': 'fuel_energy_related',
+            'upstream_transport': 'upstream_transport',
+            'waste_generated': 'waste_generated',
+            'business_travel': 'business_travel',
+            'employee_commuting': 'employee_commuting',
+            'upstream_leased_assets': 'leased_assets_upstream',
+            'downstream_transport': 'downstream_transport',
+            'processing_sold_products': 'processing_sold_products',
+            'use_sold_products': 'use_sold_products',
+            'end_of_life_sold_products': 'end_of_life',
+            'downstream_leased_assets': 'leased_assets_downstream',
+            'franchises': 'franchises',
+            'investments': 'investments'
+          };
+          payload.scope3_category = categoryMapping[newActivity.scope3Category] || newActivity.scope3Category;
         }
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(JSON.stringify(err));
+        }
+
+        const newLCAActivity = await res.json();
+        activityId = newLCAActivity.activity_id;
+
+        // Calculate LCA impact
+        const calcRes = await fetch(`/api/lca-activities/${activityId}/calculate/`, {
+          method: 'POST',
+        });
+
+        if (!calcRes.ok) {
+          console.warn('LCA calculation failed, but activity was created');
+        }
+
+        alert("LCA Activity added and calculated successfully!");
+
       } else {
-        const err = await res.json()
-        alert("Error: " + JSON.stringify(err))
+        // Create regular Emission Factor Activity
+        const selectedFactor = factors.find(f => f.factor_id === newActivity.emissionFactorId);
+        
+        const categoryMapping = {
+          'purchased_goods_services': 'purchased_goods_services',
+          'capital_goods': 'capital_goods',
+          'fuel_energy_related': 'fuel_energy_related', 
+          'upstream_transport': 'upstream_transport',
+          'waste_generated': 'waste_generated',
+          'business_travel': 'business_travel',
+          'employee_commuting': 'employee_commuting',
+          'upstream_leased_assets': 'leased_assets_upstream',
+          'downstream_transport': 'downstream_transport',
+          'processing_sold_products': 'processing_sold_products',
+          'use_sold_products': 'use_sold_products',
+          'end_of_life_sold_products': 'end_of_life',
+          'downstream_leased_assets': 'leased_assets_downstream',
+          'franchises': 'franchises',
+          'investments': 'investments'
+        };
+        
+        payload = {
+          project: project.project_id,
+          scope_number: newActivity.scope,
+          activity_name: newActivity.activityName,
+          description: newActivity.description,
+          quantity: Number(newActivity.quantity),
+          unit: selectedFactor.unit,
+          emission_factor_id: selectedFactor.factor_id,
+        };
+
+        if (newActivity.scope === 3 && newActivity.scope3Category) {
+          payload.scope3_category = categoryMapping[newActivity.scope3Category] || newActivity.scope3Category;
+        }
+
+        const res = await fetch("/api/emission-activities/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(JSON.stringify(err));
+        }
+
+        alert("Activity added successfully!");
       }
+
+      // Reset form
+      setNewActivity({
+        scope: 1,
+        activityName: "",
+        description: "",
+        quantity: "",
+        emissionFactorId: "",
+        scope3Category: ""
+      });
+      setSelectedLCAProduct(null);
+      setActivityType('emission_factor');
+      setDialogOpen(false);
+
+      // Refresh project details
+      const refreshed = await fetch(`/api/projects/${projectID}/`);
+      if (refreshed.ok) {
+        setProject(await refreshed.json());
+      }
+
     } catch (error) {
-      alert("Error: " + error.message)
+      alert("Error: " + error.message);
+    } finally {
+      setCalculating(false);
     }
   }
 
@@ -270,14 +401,78 @@ function ProjectDetails() {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
           <Typography variant="h6" component="div">
-            Add New Emission Activity
+            Add New Activity
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Create a new emission activity by selecting an emission factor and entering activity data
+            Choose between simple emission factors or comprehensive LCA analysis
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
+            
+            {/* Activity Type Selection */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Activity Type
+              </Typography>
+              <ToggleButtonGroup
+                value={activityType}
+                exclusive
+                onChange={(e, value) => {
+                  if (value !== null) {
+                    setActivityType(value);
+                    setNewActivity(prev => ({
+                      ...prev,
+                      activityName: "",
+                      quantity: "",
+                      emissionFactorId: "",
+                    }));
+                    setSelectedLCAProduct(null);
+                  }
+                }}
+                fullWidth
+              >
+                <ToggleButton value="emission_factor">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CalculateIcon />
+                    <Box sx={{ textAlign: 'left' }}>
+                      <Typography variant="body2" fontWeight={600}>Emission Factor</Typography>
+                      <Typography variant="caption">Simple calculation</Typography>
+                    </Box>
+                  </Box>
+                </ToggleButton>
+                <ToggleButton value="lca">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ScienceIcon />
+                    <Box sx={{ textAlign: 'left' }}>
+                      <Typography variant="body2" fontWeight={600}>LCA Product</Typography>
+                      <Typography variant="caption">Full supply chain</Typography>
+                    </Box>
+                  </Box>
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
+            {/* Guidance for LCA Scope Selection */}
+            {activityType === 'lca' && (
+              <Alert severity="info" sx={{ bgcolor: 'info.light' }}>
+                <Typography variant="body2" fontWeight={600} gutterBottom>
+                  💡 Choosing the Right Scope for LCA Products
+                </Typography>
+                <Typography variant="caption" component="div" sx={{ mt: 1 }}>
+                  • <strong>Scope 1:</strong> Fuels/materials you burn or use on-site (e.g., natural gas for heating)
+                </Typography>
+                <Typography variant="caption" component="div">
+                  • <strong>Scope 2:</strong> Purchased energy (e.g., electricity, steam, district heating)
+                </Typography>
+                <Typography variant="caption" component="div">
+                  • <strong>Scope 3:</strong> Purchased goods, capital assets, transportation, waste (most LCA products)
+                </Typography>
+                <Typography variant="caption" component="div" sx={{ mt: 1, fontStyle: 'italic' }}>
+                  Note: LCA calculates all supply chain steps internally, but you report the final product under one scope based on your organizational boundary.
+                </Typography>
+              </Alert>
+            )}
             
             {/* Scope Selection */}
             <TextField
@@ -319,6 +514,46 @@ function ProjectDetails() {
               </MenuItem>
             </TextField>
 
+            {/* LCA Product Selection (only for LCA type) */}
+            {activityType === 'lca' && (
+              <Box>
+                {selectedLCAProduct ? (
+                  <Card sx={{ p: 2, bgcolor: 'action.hover' }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Selected Product
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {selectedLCAProduct.name}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                      <Chip label={selectedLCAProduct.database} size="small" color="primary" />
+                      {selectedLCAProduct.location && (
+                        <Chip label={selectedLCAProduct.location} size="small" />
+                      )}
+                      <Chip label={selectedLCAProduct.unit} size="small" />
+                    </Box>
+                    <Button
+                      size="small"
+                      onClick={() => setLcaSearchOpen(true)}
+                      sx={{ mt: 2 }}
+                    >
+                      Change Product
+                    </Button>
+                  </Card>
+                ) : (
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => setLcaSearchOpen(true)}
+                    startIcon={<ScienceIcon />}
+                    sx={{ py: 2 }}
+                  >
+                    Search for LCA Product
+                  </Button>
+                )}
+              </Box>
+            )}
+
             {/* Scope 3 Category (only show if Scope 3 selected) */}
             {newActivity.scope === 3 && (
               <TextField
@@ -328,10 +563,14 @@ function ProjectDetails() {
                 onChange={e => setNewActivity(prev => ({ 
                   ...prev, 
                   scope3Category: e.target.value,
-                  emissionFactorId: "" // Reset factor when category changes
+                  emissionFactorId: activityType === 'emission_factor' ? "" : prev.emissionFactorId
                 }))}
                 fullWidth
-                helperText="Filter emission factors by Scope 3 category"
+                required
+                helperText={activityType === 'emission_factor' 
+                  ? "Filter emission factors by Scope 3 category" 
+                  : "Select the appropriate Scope 3 category for this LCA product"
+                }
               >
                 <MenuItem value="purchased_goods_services">1. Purchased goods & services ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'purchased_goods_services').length} factors)</MenuItem>
                 <MenuItem value="capital_goods">2. Capital goods ({factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(3) && f.category === 'capital_goods').length} factors)</MenuItem>
@@ -351,32 +590,34 @@ function ProjectDetails() {
               </TextField>
             )}
 
-            {/* Emission Factor Selection */}
-            <TextField
-              select
-              label="Emission Factor"
-              value={newActivity.emissionFactorId}
-              onChange={e => setNewActivity(prev => ({ ...prev, emissionFactorId: e.target.value }))}
-              fullWidth
-              required
-              disabled={availableFactors.length === 0}
-              helperText={
-                availableFactors.length === 0 
-                  ? `No emission factors available for Scope ${newActivity.scope}${newActivity.scope === 3 && newActivity.scope3Category ? ` - ${newActivity.scope3Category}` : ''}` 
-                  : undefined
-              }
-            >
-              {availableFactors.map(factor => (
-                <MenuItem key={factor.factor_id} value={factor.factor_id}>
-                  <Box>
-                    <Typography variant="body1">{factor.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {factor.emission_factor_value} kgCO₂e/{factor.unit} • {factor.category_display || factor.category}
-                    </Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </TextField>
+            {/* Emission Factor Selection (only for emission_factor type) */}
+            {activityType === 'emission_factor' && (
+              <TextField
+                select
+                label="Emission Factor"
+                value={newActivity.emissionFactorId}
+                onChange={e => setNewActivity(prev => ({ ...prev, emissionFactorId: e.target.value }))}
+                fullWidth
+                required
+                disabled={availableFactors.length === 0}
+                helperText={
+                  availableFactors.length === 0 
+                    ? `No emission factors available for Scope ${newActivity.scope}${newActivity.scope === 3 && newActivity.scope3Category ? ` - ${newActivity.scope3Category}` : ''}` 
+                    : undefined
+                }
+              >
+                {availableFactors.map(factor => (
+                  <MenuItem key={factor.factor_id} value={factor.factor_id}>
+                    <Box>
+                      <Typography variant="body1">{factor.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {factor.emission_factor_value} kgCO₂e/{factor.unit} • {factor.category_display || factor.category}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
 
             {/* Activity Details */}
             <TextField
@@ -408,21 +649,28 @@ function ProjectDetails() {
                 fullWidth
                 required
                 inputProps={{ min: 0, step: "any" }}
+                disabled={activityType === 'lca' && !selectedLCAProduct}
               />
               <TextField
                 label="Unit"
                 value={(() => {
+                  if (activityType === 'lca') {
+                    return selectedLCAProduct?.unit || ""
+                  }
                   const selectedFactor = factors.find(f => f.factor_id === newActivity.emissionFactorId)
                   return selectedFactor?.unit || ""
                 })()}
                 InputProps={{ readOnly: true }}
                 fullWidth
-                helperText="Unit is determined by selected emission factor"
+                helperText={activityType === 'lca' 
+                  ? "Unit from LCA product" 
+                  : "Unit from emission factor"
+                }
               />
             </Box>
 
             {/* Calculation Preview */}
-            {newActivity.emissionFactorId && newActivity.quantity && (
+            {activityType === 'emission_factor' && newActivity.emissionFactorId && newActivity.quantity && (
               <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
                 <Typography variant="subtitle2" gutterBottom>Emission Calculation Preview</Typography>
                 {(() => {
@@ -435,6 +683,14 @@ function ProjectDetails() {
                   )
                 })()}
               </Box>
+            )}
+
+            {activityType === 'lca' && selectedLCAProduct && newActivity.quantity && (
+              <Alert severity="info" sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="body2">
+                  LCA calculation will be performed after adding this activity. This includes full supply chain impacts.
+                </Typography>
+              </Alert>
             )}
 
           </Box>
@@ -451,19 +707,34 @@ function ProjectDetails() {
                 emissionFactorId: "",
                 scope3Category: ""
               })
+              setSelectedLCAProduct(null)
+              setActivityType('emission_factor')
             }}
+            disabled={calculating}
           >
             Cancel
           </Button>
           <Button 
             variant="contained" 
             onClick={handleSubmit}
-            disabled={!newActivity.emissionFactorId || !newActivity.activityName || !newActivity.quantity}
+            disabled={
+              calculating ||
+              !newActivity.activityName || 
+              !newActivity.quantity ||
+              (activityType === 'emission_factor' ? !newActivity.emissionFactorId : !selectedLCAProduct)
+            }
           >
-            Add Activity
+            {calculating ? 'Adding...' : 'Add Activity'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* LCA Product Search Dialog */}
+      <LCAProductSearch
+        open={lcaSearchOpen}
+        onClose={() => setLcaSearchOpen(false)}
+        onSelect={handleLCAProductSelect}
+      />
 
       <Divider sx={{ my: 3 }} />
 
@@ -509,28 +780,75 @@ function ProjectDetails() {
         <CardContent>
           <Typography variant="h6" sx={{ mb: 2 }}>Activities</Typography>
           {(() => {
+            // Combine both emission factor activities and LCA activities
             const rows = (project.scopes || [])
               .filter(s => selectedScopes.includes(s.scope_number))
-              .flatMap(s => (s.activities || []).map(a => ({
-                id: a.activity_id,
-                scopeNumber: s.scope_number,
-                activityName: a.activity_name,
-                quantity: Number(a.quantity || 0),
-                unit: a.unit,
-                factor: a.emission_factor?.name || '',
-                emissions: isFinite(Number(a.calculated_emissions)) ? Number(a.calculated_emissions).toFixed(3) : "",
-                scope3Category: a.scope3_category || '',
-              })))
+              .flatMap(s => {
+                const emissionActivities = (s.activities || []).map(a => ({
+                  id: `ef-${a.activity_id}`,
+                  activityId: a.activity_id,
+                  type: 'Emission Factor',
+                  scopeNumber: s.scope_number,
+                  activityName: a.activity_name,
+                  quantity: Number(a.quantity || 0),
+                  unit: a.unit,
+                  source: a.emission_factor?.name || '',
+                  emissions: isFinite(Number(a.calculated_emissions)) ? Number(a.calculated_emissions).toFixed(3) : "",
+                  scope3Category: a.scope3_category || '',
+                }));
+
+                const lcaActivities = (s.lca_activities || []).map(a => ({
+                  id: `lca-${a.activity_id}`,
+                  activityId: a.activity_id,
+                  type: 'LCA',
+                  scopeNumber: s.scope_number,
+                  activityName: a.activity_name,
+                  quantity: Number(a.quantity || 0),
+                  unit: a.bw2_unit || '',
+                  source: a.bw2_activity_name || a.bw2_database || 'LCA Product',
+                  emissions: isFinite(Number(a.emissions_tco2e)) ? Number(a.emissions_tco2e).toFixed(3) : "",
+                  scope3Category: a.scope3_category || '',
+                }));
+
+                return [...emissionActivities, ...lcaActivities];
+              });
 
             const columns = [
-              { field: 'scopeNumber', headerName: 'Scope', width: 100 },
+              { 
+                field: 'type', 
+                headerName: 'Type', 
+                width: 130,
+                renderCell: (params) => (
+                  <Chip 
+                    label={params.value} 
+                    size="small"
+                    color={params.value === 'LCA' ? 'secondary' : 'default'}
+                    icon={params.value === 'LCA' ? <ScienceIcon /> : <CalculateIcon />}
+                  />
+                )
+              },
+              { field: 'scopeNumber', headerName: 'Scope', width: 80 },
               { field: 'activityName', headerName: 'Activity', flex: 1, minWidth: 200 },
               { field: 'quantity', headerName: 'Qty', width: 100, type: 'number' },
-              { field: 'unit', headerName: 'Unit', width: 120 },
-              { field: 'factor', headerName: 'Emission Factor', flex: 1, minWidth: 220 },
+              { field: 'unit', headerName: 'Unit', width: 100 },
+              { field: 'source', headerName: 'Source', flex: 1, minWidth: 200 },
               { field: 'emissions', headerName: 'tCO₂e', width: 120, type: 'number' },
-              { field: 'scope3Category', headerName: 'Scope 3 Category', flex: 1, minWidth: 220 },
-            ]
+              { 
+                field: 'actions', 
+                headerName: 'Actions', 
+                width: 100,
+                sortable: false,
+                renderCell: (params) => (
+                  <IconButton 
+                    size="small" 
+                    color="error"
+                    onClick={() => handleDeleteActivity(params.row.activityId, params.row.type)}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )
+              },
+            ];
 
             return (
               <div style={{ width: '100%' }}>
