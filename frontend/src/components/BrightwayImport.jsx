@@ -281,10 +281,10 @@ function BrightwayImport() {
     <Box sx={{ width: "100%" }}>
       <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
         <Tabs value={tabValue} onChange={handleTabChange}>
-          <Tab label="Import Database" icon={<CloudUploadIcon />} iconPosition="start" />
-          <Tab label="Manage Databases" icon={<StorageIcon />} iconPosition="start" />
           <Tab label="Browse Database" icon={<SearchIcon />} iconPosition="start" />
           <Tab label="Custom Products" icon={<AddIcon />} iconPosition="start" />
+          <Tab label="Manage Databases" icon={<StorageIcon />} iconPosition="start" />
+          <Tab label="Import Database" icon={<CloudUploadIcon />} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -300,168 +300,13 @@ function BrightwayImport() {
         </Alert>
       )}
 
-      {/* Tab 1: Import Database */}
+      {/* Tab 1: Browse Database */}
       <TabPanel value={tabValue} index={0}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Import Ecoinvent Database
-            </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Import an ecoinvent database into the ZeroScope_LCA project. This operation may
-              take several minutes depending on your internet connection and the database size.
-            </Typography>
-
-            <Alert severity="info" sx={{ my: 2 }}>
-              <Typography variant="body2">
-                <strong>Note:</strong> You need valid ecoinvent credentials to import databases.
-                The project name is always <strong>ZeroScope_LCA</strong>.
-              </Typography>
-            </Alert>
-
-            <Box sx={{ mt: 3, display: "flex", flexDirection: "column", gap: 2 }}>
-              <FormControl fullWidth>
-                <InputLabel>Ecoinvent Version</InputLabel>
-                <Select
-                  value={version}
-                  label="Ecoinvent Version"
-                  onChange={(e) => setVersion(e.target.value)}
-                  disabled={importing}
-                >
-                  <MenuItem value="3.9.1">3.9.1</MenuItem>
-                  <MenuItem value="3.10">3.10</MenuItem>
-                  <MenuItem value="3.8">3.8</MenuItem>
-                </Select>
-              </FormControl>
-
-              <FormControl fullWidth>
-                <InputLabel>System Model</InputLabel>
-                <Select
-                  value={systemModel}
-                  label="System Model"
-                  onChange={(e) => setSystemModel(e.target.value)}
-                  disabled={importing}
-                >
-                  {systemModels.map((model) => (
-                    <MenuItem key={model.value} value={model.value}>
-                      {model.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <TextField
-                label="Ecoinvent Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                fullWidth
-                disabled={importing}
-              />
-
-              <TextField
-                label="Ecoinvent Password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                fullWidth
-                disabled={importing}
-              />
-
-              {importing && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    {importStatus}
-                  </Typography>
-                  <LinearProgress variant="determinate" value={importProgress} />
-                  <Typography variant="caption" sx={{ mt: 1, display: "block" }}>
-                    {importProgress}%
-                  </Typography>
-                </Box>
-              )}
-
-              <Button
-                variant="contained"
-                startIcon={importing ? <CircularProgress size={20} /> : <CloudUploadIcon />}
-                onClick={handleImportEcoinvent}
-                disabled={importing || !username || !password}
-                fullWidth
-              >
-                {importing ? "Importing..." : "Import Database"}
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
-      </TabPanel>
-
-      {/* Tab 2: Manage Databases */}
-      <TabPanel value={tabValue} index={1}>
-        <Card>
-          <CardContent>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-              <Typography variant="h6">Available Databases</Typography>
-              <Button
-                startIcon={<RefreshIcon />}
-                onClick={loadDatabases}
-                disabled={loadingDatabases}
-              >
-                Refresh
-              </Button>
-            </Box>
-
-            {loadingDatabases ? (
-              <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
-                <CircularProgress />
-              </Box>
-            ) : databases.length === 0 ? (
-              <Alert severity="info">
-                No databases found. Import a database using the Import tab.
-              </Alert>
-            ) : (
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell><strong>Database Name</strong></TableCell>
-                      <TableCell align="right"><strong>Activities</strong></TableCell>
-                      <TableCell align="right"><strong>Actions</strong></TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {databases.map((db) => (
-                      <TableRow key={db.name}>
-                        <TableCell>{db.name}</TableCell>
-                        <TableCell align="right">
-                          <Chip label={db.num_activities.toLocaleString()} color="primary" size="small" />
-                        </TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            color="error"
-                            onClick={() => {
-                              setDatabaseToDelete(db.name);
-                              setDeleteDialogOpen(true);
-                            }}
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </CardContent>
-        </Card>
-      </TabPanel>
-
-      {/* Tab 3: Browse Database */}
-      <TabPanel value={tabValue} index={2}>
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
               Browse Database Activities
             </Typography>
-
             <Box sx={{ mb: 3, display: "flex", gap: 2, alignItems: "center" }}>
               <FormControl sx={{ minWidth: 300 }}>
                 <InputLabel>Select Database</InputLabel>
@@ -553,9 +398,163 @@ function BrightwayImport() {
         </Card>
       </TabPanel>
 
-      {/* Tab 4: Custom Products */}
-      <TabPanel value={tabValue} index={3}>
+      {/* Tab 2: Custom Products */}
+      <TabPanel value={tabValue} index={1}>
         <CustomProductCreator />
+      </TabPanel>
+
+      {/* Tab 3: Manage Databases */}
+      <TabPanel value={tabValue} index={2}>
+        <Card>
+          <CardContent>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+              <Typography variant="h6">Available Databases</Typography>
+              <Button
+                startIcon={<RefreshIcon />}
+                onClick={loadDatabases}
+                disabled={loadingDatabases}
+              >
+                Refresh
+              </Button>
+            </Box>
+
+            {loadingDatabases ? (
+              <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+                <CircularProgress />
+              </Box>
+            ) : databases.length === 0 ? (
+              <Alert severity="info">
+                No databases found. Import a database using the Import tab.
+              </Alert>
+            ) : (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Database Name</strong></TableCell>
+                      <TableCell align="right"><strong>Activities</strong></TableCell>
+                      <TableCell align="right"><strong>Actions</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {databases.map((db) => (
+                      <TableRow key={db.name}>
+                        <TableCell>{db.name}</TableCell>
+                        <TableCell align="right">
+                          <Chip label={db.num_activities.toLocaleString()} color="primary" size="small" />
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            color="error"
+                            onClick={() => {
+                              setDatabaseToDelete(db.name);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      {/* Tab 4: Import Database */}
+      <TabPanel value={tabValue} index={3}>
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Import Ecoinvent Database
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Import an ecoinvent database into the ZeroScope_LCA project. This operation may
+              take several minutes depending on your internet connection and the database size.
+            </Typography>
+
+            <Alert severity="info" sx={{ my: 2 }}>
+              <Typography variant="body2">
+                <strong>Note:</strong> You need valid ecoinvent credentials to import databases.
+                The project name is always <strong>ZeroScope_LCA</strong>.
+              </Typography>
+            </Alert>
+
+            <Box sx={{ mt: 3, display: "flex", flexDirection: "column", gap: 2 }}>
+              <FormControl fullWidth>
+                <InputLabel>Ecoinvent Version</InputLabel>
+                <Select
+                  value={version}
+                  label="Ecoinvent Version"
+                  onChange={(e) => setVersion(e.target.value)}
+                  disabled={importing}
+                >
+                  <MenuItem value="3.9.1">3.9.1</MenuItem>
+                  <MenuItem value="3.10">3.10</MenuItem>
+                  <MenuItem value="3.8">3.8</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <InputLabel>System Model</InputLabel>
+                <Select
+                  value={systemModel}
+                  label="System Model"
+                  onChange={(e) => setSystemModel(e.target.value)}
+                  disabled={importing}
+                >
+                  {systemModels.map((model) => (
+                    <MenuItem key={model.value} value={model.value}>
+                      {model.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                label="Ecoinvent Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                fullWidth
+                disabled={importing}
+              />
+
+              <TextField
+                label="Ecoinvent Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                fullWidth
+                disabled={importing}
+              />
+
+              {importing && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    {importStatus}
+                  </Typography>
+                  <LinearProgress variant="determinate" value={importProgress} />
+                  <Typography variant="caption" sx={{ mt: 1, display: "block" }}>
+                    {importProgress}%
+                  </Typography>
+                </Box>
+              )}
+
+              <Button
+                variant="contained"
+                startIcon={importing ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                onClick={handleImportEcoinvent}
+                disabled={importing || !username || !password}
+                fullWidth
+              >
+                {importing ? "Importing..." : "Import Database"}
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
       </TabPanel>
 
       {/* Delete Database Confirmation Dialog */}

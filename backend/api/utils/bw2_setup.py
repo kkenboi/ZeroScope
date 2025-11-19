@@ -40,18 +40,6 @@ class BW2LCA:
                 'success': False,
                 'error': str(e)
             }
-
-    def print_versions(self):
-        """Print versions of Brightway2 packages"""
-        versions = {
-            'bw2data': bd.__version__,
-            'bw2io': bi.__version__,
-            'bw2calc': bc.__version__
-        }
-        print("bw2data version", bd.__version__)
-        print("bw2io version", bi.__version__)
-        print("bw2calc version", bc.__version__)
-        return versions
     
     def list_databases(self):
         """List all databases in the current project"""
@@ -617,6 +605,51 @@ class BW2LCA:
             return {
                 'success': True,
                 'message': f'Successfully deleted product: {activity_name}'
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def run_monte_carlo_single(self, database_name, activity_code, quantity, impact_method):
+        """
+        Run a single Monte Carlo iteration for uncertainty analysis
+        In BW 2.5, we simulate uncertainty by using stats_arrays to sample from distributions
+        """
+        try:
+            bd.projects.set_current(self.PROJECT_NAME)
+            
+            if database_name not in bd.databases:
+                return {
+                    'success': False,
+                    'error': f'Database {database_name} not found'
+                }
+            
+            db = bd.Database(database_name)
+            activity = db.get(activity_code)
+            
+            if not activity:
+                return {
+                    'success': False,
+                    'error': f'Activity {activity_code} not found'
+                }
+            
+            # Create functional unit
+            functional_unit = {activity: float(quantity)}
+            
+            # Use regular LCA with use_distributions=True for Monte Carlo sampling
+            lca = bc.LCA(functional_unit, impact_method, use_distributions=True)
+            lca.lci()
+            lca.lcia()
+            
+            # Get the score (which will be randomized if uncertainty data exists)
+            impact = lca.score
+            
+            return {
+                'success': True,
+                'impact': float(impact)  # Returns in kgCO2e
             }
             
         except Exception as e:

@@ -370,15 +370,49 @@ class BW2AdminViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
     
     @action(detail=False, methods=['GET'])
-    def print_versions(self, request):
-        from .utils.bw2_setup import BW2LCA
-        bw2Instance = BW2LCA()
-        result = bw2Instance.print_versions()
-        
-        return Response({
-            'message': 'Versions printed to console',
-            'versions': result
-        }, status=status.HTTP_200_OK)
+    def list_impact_methods(self, request):
+        """List notable impact methods for environmental assessment"""
+        try:
+            import bw2data as bd
+            bd.projects.set_current("ZeroScope_LCA")
+            
+            # Define notable impact assessment methods
+            notable_keywords = [
+                'IPCC 2013',  # Climate change
+                'ReCiPe 2016',  # Comprehensive environmental assessment
+                'CML-IA baseline',  # Classic LCA method
+                'EF v3.1',  # Environmental Footprint
+                'TRACI',  # US EPA method
+                'Ecological Scarcity',  # Swiss method
+            ]
+            
+            methods_list = []
+            for method in bd.methods:
+                method_name = ' - '.join(method)
+                # Only include methods that match notable keywords
+                if any(keyword in method_name for keyword in notable_keywords):
+                    # Prioritize climate change methods
+                    if 'IPCC 2013' in method_name and 'GWP100' in method_name and 'no LT' not in method_name:
+                        methods_list.insert(0, {
+                            'method': list(method),
+                            'name': method_name
+                        })
+                    else:
+                        methods_list.append({
+                            'method': list(method),
+                            'name': method_name
+                        })
+            
+            return Response({
+                'success': True,
+                'methods': methods_list,
+                'count': len(methods_list)
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['GET'])
     def list_databases(self, request):
@@ -766,3 +800,188 @@ def get_settings(request):
 #             return Response(serializer.data)
 #         else:
 #             return Response(serializer.errors, status = status.HTTP_400_BAD_REQUEST)
+
+
+class UncertaintyAnalysisViewSet(viewsets.ViewSet):
+    """
+    Uncertainty analysis using Monte Carlo simulation
+    """
+    permission_classes = [AllowAny]
+    
+    @action(detail=False, methods=['POST'])
+    def project(self, request):
+        """
+        Run Monte Carlo uncertainty analysis on a project
+        Expected body: {
+            "project_id": "uuid",
+            "iterations": 1000,
+            "impact_method": ["IPCC 2013", "climate change", "GWP 100a"] (optional)
+        }
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            import numpy as np
+            
+            project_id = request.data.get('project_id')
+            iterations = request.data.get('iterations', 1000)
+            impact_method = request.data.get('impact_method')
+            
+            if not project_id:
+                return Response({
+                    'success': False,
+                    'error': 'project_id is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get all LCA activities for this project
+            lca_activities = LCAActivity.objects.filter(project_id=project_id)
+            
+            if not lca_activities.exists():
+                return Response({
+                    'success': False,
+                    'error': 'No LCA activities found for this project'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            
+            # Use default method if not specified
+            if not impact_method:
+                impact_method = ('ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)')
+            else:
+                impact_method = tuple(impact_method)
+            
+            # Run Monte Carlo for each activity and sum results
+            all_results = []
+            
+            for iteration in range(iterations):
+                total_impact = 0
+                
+                for activity in lca_activities:
+                    result = bw2Instance.run_monte_carlo_single(
+                        database_name=activity.bw2_database,
+                        activity_code=activity.bw2_activity_code,
+                        quantity=float(activity.quantity),
+                        impact_method=impact_method
+                    )
+                    
+                    if result['success']:
+                        total_impact += result['impact']
+                
+                all_results.append(total_impact / 1000)  # Convert to tCO2e
+            
+            # Calculate statistics
+            results_array = np.array(all_results)
+            statistics = {
+                'mean': float(np.mean(results_array)),
+                'std': float(np.std(results_array)),
+                'min': float(np.min(results_array)),
+                'max': float(np.max(results_array)),
+                'median': float(np.median(results_array)),
+                'percentile_2_5': float(np.percentile(results_array, 2.5)),
+                'percentile_97_5': float(np.percentile(results_array, 97.5)),
+                'percentile_5': float(np.percentile(results_array, 5)),
+                'percentile_95': float(np.percentile(results_array, 95)),
+            }
+            
+            # Create histogram
+            hist, bin_edges = np.histogram(results_array, bins=30)
+            
+            return Response({
+                'success': True,
+                'statistics': statistics,
+                'histogram': hist.tolist(),
+                'bin_edges': bin_edges.tolist(),
+                'iterations': iterations,
+                'num_activities': lca_activities.count()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            return Response({
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['POST'])
+    def activity(self, request):
+        """
+        Run Monte Carlo uncertainty analysis on a single activity
+        Expected body: {
+            "database_name": "ecoinvent-3.9.1-cutoff",
+            "activity_code": "abc123",
+            "quantity": 1.0,
+            "iterations": 1000,
+            "impact_method": ["IPCC 2013", "climate change", "GWP 100a"] (optional)
+        }
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            import numpy as np
+            
+            database_name = request.data.get('database_name')
+            activity_code = request.data.get('activity_code')
+            quantity = request.data.get('quantity', 1.0)
+            iterations = request.data.get('iterations', 1000)
+            impact_method = request.data.get('impact_method')
+            
+            if not database_name or not activity_code:
+                return Response({
+                    'success': False,
+                    'error': 'database_name and activity_code are required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            
+            # Use default method if not specified
+            if not impact_method:
+                impact_method = ('ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)')
+            else:
+                impact_method = tuple(impact_method)
+            
+            # Run Monte Carlo iterations
+            all_results = []
+            
+            for iteration in range(iterations):
+                result = bw2Instance.run_monte_carlo_single(
+                    database_name=database_name,
+                    activity_code=activity_code,
+                    quantity=float(quantity),
+                    impact_method=impact_method
+                )
+                
+                if result['success']:
+                    all_results.append(result['impact'] / 1000)  # Convert to tCO2e
+            
+            # Calculate statistics
+            results_array = np.array(all_results)
+            statistics = {
+                'mean': float(np.mean(results_array)),
+                'std': float(np.std(results_array)),
+                'min': float(np.min(results_array)),
+                'max': float(np.max(results_array)),
+                'median': float(np.median(results_array)),
+                'percentile_2_5': float(np.percentile(results_array, 2.5)),
+                'percentile_97_5': float(np.percentile(results_array, 97.5)),
+                'percentile_5': float(np.percentile(results_array, 5)),
+                'percentile_95': float(np.percentile(results_array, 95)),
+            }
+            
+            # Create histogram
+            hist, bin_edges = np.histogram(results_array, bins=30)
+            
+            return Response({
+                'success': True,
+                'statistics': statistics,
+                'histogram': hist.tolist(),
+                'bin_edges': bin_edges.tolist(),
+                'iterations': iterations,
+                'quantity': quantity
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            return Response({
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

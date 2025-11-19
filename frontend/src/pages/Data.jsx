@@ -304,18 +304,6 @@ function Data() {
       setPage(1);
     };
 
-    const printBW2Versions = async () => {
-      const response = await fetch("/api/brightway2/print_versions/", {
-        method: "GET"
-      })
-
-      if (response.ok)
-      {
-        const data = await response.json();
-        console.log("BW2 Versions:", data);
-      }
-    }
-
     return (
         <div>
             <h1> Data </h1>
@@ -324,7 +312,7 @@ function Data() {
             <Box sx={{ borderBottom: 1, borderColor: "divider", mt: 2 }}>
               <Tabs value={mainTabValue} onChange={(e, newValue) => setMainTabValue(newValue)}>
                 <Tab label="Emission Factors" icon={<AssessmentIcon />} iconPosition="start" />
-                <Tab label="Brightway2 LCA Databases" icon={<StorageIcon />} iconPosition="start" />
+                <Tab label="LCA Databases" icon={<StorageIcon />} iconPosition="start" />
               </Tabs>
             </Box>
 
@@ -355,14 +343,6 @@ function Data() {
                     onClick={handleChooseFileClick}
                 >
                     Choose SEFR Excel File
-                </Button>
-                <Button
-                    variant="contained"
-                    startIcon={<UploadFileIcon />}
-                    sx={{ borderRadius: 2, mb: 2 }}
-                    onClick={printBW2Versions}
-                >
-                    Print Versions
                 </Button>
                 <Button
                     variant="outlined"

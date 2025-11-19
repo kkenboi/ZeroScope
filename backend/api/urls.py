@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework import routers
 from .views import (
     ProjectViewSet, EmissionScopeViewSet, EmissionFactorViewSet, EmissionActivityViewSet, 
-    LCAProductViewSet, LCAActivityViewSet, BW2AdminViewSet,
+    LCAProductViewSet, LCAActivityViewSet, BW2AdminViewSet, UncertaintyAnalysisViewSet,
     get_settings
 )
 
@@ -11,9 +11,11 @@ router.register(r'projects', ProjectViewSet)
 router.register(r'emission-scopes', EmissionScopeViewSet)
 router.register(r'emission-factors', EmissionFactorViewSet)
 router.register(r'emission-activities', EmissionActivityViewSet)
+router.register(r'activities', EmissionActivityViewSet, basename='activities')  # Alias for emission-activities
 router.register(r'lca-products', LCAProductViewSet)
 router.register(r'lca-activities', LCAActivityViewSet)
 router.register(r'brightway2', BW2AdminViewSet, basename='brightway2')
+router.register(r'uncertainty', UncertaintyAnalysisViewSet, basename='uncertainty')
 
 urlpatterns = [
     path('settings/', get_settings, name='get-settings'),

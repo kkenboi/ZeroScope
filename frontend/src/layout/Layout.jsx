@@ -52,6 +52,10 @@ const Layout = ({ children }) => {
       path: "/data",
     },
     {
+      text: "Analysis",
+      path: "/analysis",
+    },
+    {
       text: "Reports",
       path: "/reports",
     },
