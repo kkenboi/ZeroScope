@@ -3,7 +3,7 @@ from rest_framework import routers
 from .views import (
     ProjectViewSet, EmissionScopeViewSet, EmissionFactorViewSet, EmissionActivityViewSet, 
     LCAProductViewSet, LCAActivityViewSet, BW2AdminViewSet, UncertaintyAnalysisViewSet,
-    get_settings
+    SensitivityAnalysisViewSet, get_settings, calculate_lca
 )
 
 router = routers.DefaultRouter()
@@ -16,8 +16,10 @@ router.register(r'lca-products', LCAProductViewSet)
 router.register(r'lca-activities', LCAActivityViewSet)
 router.register(r'brightway2', BW2AdminViewSet, basename='brightway2')
 router.register(r'uncertainty', UncertaintyAnalysisViewSet, basename='uncertainty')
+router.register(r'sensitivity', SensitivityAnalysisViewSet, basename='sensitivity')
 
 urlpatterns = [
     path('settings/', get_settings, name='get-settings'),
+    path('lca/calculate/', calculate_lca, name='calculate-lca'),
     path('', include(router.urls)),
 ]

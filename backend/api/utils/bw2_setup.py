@@ -1,6 +1,7 @@
 import bw2data as bd
 import bw2io as bi
 import bw2calc as bc
+import traceback
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -655,5 +656,68 @@ class BW2LCA:
         except Exception as e:
             return {
                 'success': False,
-                'error': str(e)
+                'error': f"{type(e).__name__}: {str(e)}",
+                'traceback': traceback.format_exc()
+            }
+    
+    def calculate_activity_impact(self, database_name, activity_code, amount=1.0, impact_method=None):
+        """
+        Calculate LCA impact for any activity in the database
+        
+        Args:
+            database_name: Name of the Brightway2 database
+            activity_code: Activity code
+            amount: Quantity/amount of the activity
+            impact_method: Impact assessment method tuple (e.g., ('IPCC 2013', 'climate change', 'GWP 100a'))
+        
+        Returns:
+            Dictionary with success status and impact value in kgCO₂e
+        """
+        try:
+            bd.projects.set_current(self.PROJECT_NAME)
+            
+            # Get the activity
+            if database_name not in bd.databases:
+                return {
+                    'success': False,
+                    'error': f"Database '{database_name}' not found"
+                }
+            
+            db = bd.Database(database_name)
+            activity = db.get(activity_code)
+            
+            if not activity:
+                return {
+                    'success': False,
+                    'error': f"Activity '{activity_code}' not found in database '{database_name}'"
+                }
+            
+            # Use default method if not specified
+            if not impact_method:
+                impact_method = ('IPCC 2013', 'climate change', 'GWP 100a')
+            
+            # Create functional unit
+            functional_unit = {activity: float(amount)}
+            
+            # Perform LCA calculation
+            lca = bc.LCA(functional_unit, impact_method)
+            lca.lci()
+            lca.lcia()
+            
+            # Result is in kgCO₂e for GWP
+            impact = lca.score
+            
+            return {
+                'success': True,
+                'impact': float(impact),  # Returns in kgCO2e
+                'activity_name': activity.get('name', ''),
+                'unit': activity.get('unit', ''),
+                'amount': amount
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"{type(e).__name__}: {str(e)}",
+                'traceback': traceback.format_exc()
             }

@@ -377,31 +377,63 @@ class BW2AdminViewSet(viewsets.ViewSet):
             bd.projects.set_current("ZeroScope_LCA")
             
             # Define notable impact assessment methods
-            notable_keywords = [
-                'IPCC 2013',  # Climate change
-                'ReCiPe 2016',  # Comprehensive environmental assessment
-                'CML-IA baseline',  # Classic LCA method
-                'EF v3.1',  # Environmental Footprint
-                'TRACI',  # US EPA method
-                'Ecological Scarcity',  # Swiss method
-            ]
+            # Define keywords to look for, in order of priority
+            # We want to find IPCC methods first
             
             methods_list = []
+            
+            # Helper to score methods
+            def score_method(method_tuple):
+                name = ' '.join(method_tuple).lower()
+                score = 0
+                
+                # Must be climate change / GWP
+                if not ('climate change' in name and ('gwp' in name or 'global warming potential' in name)):
+                    return -1
+                
+                # Prefer IPCC
+                if 'ipcc' in name:
+                    score += 100
+                    if '2021' in name:
+                        score += 50  # Newest
+                    elif '2013' in name:
+                        score += 40
+                
+                # Prefer standard timeframes
+                if '100a' in name or '100 years' in name:
+                    score += 10
+                elif '20a' in name or '20 years' in name:
+                    score += 5
+                
+                # Penalize "no lt" (no long term) if we have standard ones, or maybe prefer them?
+                # Usually standard is better.
+                
+                return score
+
+            # Score all methods
+            scored_methods = []
             for method in bd.methods:
-                method_name = ' - '.join(method)
-                # Only include methods that match notable keywords
-                if any(keyword in method_name for keyword in notable_keywords):
-                    # Prioritize climate change methods
-                    if 'IPCC 2013' in method_name and 'GWP100' in method_name and 'no LT' not in method_name:
-                        methods_list.insert(0, {
-                            'method': list(method),
-                            'name': method_name
-                        })
-                    else:
-                        methods_list.append({
-                            'method': list(method),
-                            'name': method_name
-                        })
+                s = score_method(method)
+                if s > 0:
+                    scored_methods.append((s, method))
+            
+            # Sort by score descending
+            scored_methods.sort(key=lambda x: x[0], reverse=True)
+            
+            # Take top 4
+            for _, method in scored_methods[:4]:
+                methods_list.append({
+                    'method': list(method),
+                    'name': ' - '.join(method)
+                })
+            
+            # If still empty (unlikely if database has methods), fallback to any
+            if not methods_list and len(bd.methods) > 0:
+                 for method in list(bd.methods)[:4]:
+                    methods_list.append({
+                        'method': list(method),
+                        'name': ' - '.join(method)
+                    })
             
             return Response({
                 'success': True,
@@ -802,6 +834,78 @@ def get_settings(request):
 #             return Response(serializer.errors, status = status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def calculate_lca(request):
+    """
+    Calculate LCA impact for any Brightway2 activity
+    Expected body: {
+        "database_name": "ecoinvent-3.9.1-cutoff",
+        "activity_code": "abc123",
+        "quantity": 1.0,
+        "impact_method": ["IPCC 2013", "climate change", "GWP 100a"] (optional)
+    }
+    """
+    try:
+        from .utils.bw2_setup import BW2LCA
+        
+        database_name = request.data.get('database_name')
+        activity_code = request.data.get('activity_code')
+        quantity = float(request.data.get('quantity', 1.0))
+        impact_method = request.data.get('impact_method')
+        
+        if not database_name or not activity_code:
+            return Response({
+                'success': False,
+                'error': 'Missing required fields: database_name, activity_code'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        bw2Instance = BW2LCA()
+        
+        # Use default method if not specified
+        if not impact_method:
+            impact_method = ('IPCC 2013', 'climate change', 'GWP 100a')
+        else:
+            impact_method = tuple(impact_method)
+        
+        # Calculate LCA impact
+        result = bw2Instance.calculate_activity_impact(
+            database_name=database_name,
+            activity_code=activity_code,
+            amount=quantity,
+            impact_method=impact_method
+        )
+        
+        if result.get('success'):
+            return Response({
+                'success': True,
+                'total_impact': result['impact'],
+                'quantity': quantity,
+                'unit_impact': result['impact'] / quantity if quantity != 0 else 0,
+                'database': database_name,
+                'activity_code': activity_code
+            }, status=status.HTTP_200_OK)
+        else:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"LCA calculation failed: {result.get('error')}")
+            if 'traceback' in result:
+                logger.error(result['traceback'])
+            return Response({
+                'success': False,
+                'error': result.get('error', 'LCA calculation failed')
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in calculate_lca: {e}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class UncertaintyAnalysisViewSet(viewsets.ViewSet):
     """
     Uncertainty analysis using Monte Carlo simulation
@@ -845,7 +949,7 @@ class UncertaintyAnalysisViewSet(viewsets.ViewSet):
             
             # Use default method if not specified
             if not impact_method:
-                impact_method = ('ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)')
+                impact_method = ('IPCC 2013', 'climate change', 'GWP 100a')
             else:
                 impact_method = tuple(impact_method)
             
@@ -934,7 +1038,7 @@ class UncertaintyAnalysisViewSet(viewsets.ViewSet):
             
             # Use default method if not specified
             if not impact_method:
-                impact_method = ('ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)')
+                impact_method = ('IPCC 2013', 'climate change', 'GWP 100a')
             else:
                 impact_method = tuple(impact_method)
             
@@ -976,6 +1080,340 @@ class UncertaintyAnalysisViewSet(viewsets.ViewSet):
                 'bin_edges': bin_edges.tolist(),
                 'iterations': iterations,
                 'quantity': quantity
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            return Response({
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SensitivityAnalysisViewSet(viewsets.ViewSet):
+    """
+    Sensitivity analysis for projects and products.
+    Performs one-at-a-time (OAT) parameter variation to identify
+    which parameters have the greatest influence on results.
+    """
+    permission_classes = [AllowAny]
+    
+    @action(detail=False, methods=['POST'])
+    def project(self, request):
+        """
+        Run sensitivity analysis on a project by varying activity quantities.
+        Expected body: {
+            "project_id": "uuid",
+            "adjustments": {"activity_id": percent_change, ...},  # e.g., {"uuid": -20, "uuid2": 50}
+            "timeline_years": 5,
+            "growth_rate": 0.03,  # 3% annual growth
+            "impact_method": ["IPCC 2013", "climate change", "GWP 100a"] (optional)
+        }
+        Returns tornado chart data and timeline projections
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            import numpy as np
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            logger.info(f"=== Sensitivity Analysis Request ===")
+            logger.info(f"Request data: {request.data}")
+            
+            project_id = request.data.get('project_id')
+            adjustments = request.data.get('adjustments', {})
+            timeline_years = request.data.get('timeline_years', 5)
+            growth_rate = request.data.get('growth_rate', 0.0)
+            impact_method = request.data.get('impact_method')
+            
+            logger.info(f"Parsed - project_id: {project_id}, timeline_years: {timeline_years}, growth_rate: {growth_rate}")
+            logger.info(f"Number of adjustments: {len(adjustments) if adjustments else 0}")
+            
+            if not project_id:
+                logger.warning("Missing project_id in request")
+                return Response({
+                    'success': False,
+                    'error': 'project_id is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get project and all activities
+            try:
+                project = Project.objects.get(project_id=project_id)
+                logger.info(f"Found project: {project.name} (ID: {project_id})")
+            except Project.DoesNotExist:
+                logger.error(f"Project not found: {project_id}")
+                return Response({
+                    'success': False,
+                    'error': f'Project {project_id} not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            except Exception as e:
+                logger.error(f"Error fetching project: {str(e)}")
+                return Response({
+                    'success': False,
+                    'error': f'Error fetching project: {str(e)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # BW2LCA initialization - not needed for sensitivity analysis but kept for compatibility
+            try:
+                bw2Instance = BW2LCA()
+                logger.info("BW2LCA instance initialized")
+            except Exception as e:
+                logger.warning(f"Could not initialize BW2LCA: {str(e)} - continuing without it")
+            
+            # Use default method if not specified
+            if not impact_method:
+                impact_method = ('IPCC 2013', 'climate change', 'GWP 100a')
+            else:
+                impact_method = tuple(impact_method)
+            
+            # Calculate baseline emissions for each activity
+            activity_impacts = {}
+            baseline_total = 0.0
+            
+            scopes = project.scopes.all()
+            logger.info(f"Processing {scopes.count()} scopes")
+            
+            for scope in scopes:
+                logger.info(f"Processing Scope {scope.scope_number}")
+                # Process emission factor activities
+                for activity in scope.activities.all():
+                    if activity.emission_factor:
+                        impact = float(activity.quantity * activity.emission_factor.emission_factor_value) / 1000  # to tCO2e
+                        activity_impacts[str(activity.activity_id)] = {
+                            'name': activity.activity_name,
+                            'baseline': impact,
+                            'type': 'emission_factor',
+                            'scope': scope.scope_number
+                        }
+                        baseline_total += impact
+                
+                # Process LCA activities
+                for lca_activity in scope.lca_activities.all():
+                    try:
+                        # Check if LCA activity has been calculated
+                        if lca_activity.calculated_emissions is None or lca_activity.calculated_emissions == 0:
+                            # Skip uncalculated activities with a warning
+                            print(f"Warning: LCA activity '{lca_activity.activity_name}' has not been calculated (emissions = {lca_activity.calculated_emissions}). Skipping.")
+                            continue
+                        
+                        # Use the calculated_emissions from the model (in kgCO2e)
+                        impact = float(lca_activity.calculated_emissions) / 1000  # to tCO2e
+                        activity_impacts[str(lca_activity.activity_id)] = {
+                            'name': lca_activity.activity_name,
+                            'baseline': impact,
+                            'type': 'lca',
+                            'scope': scope.scope_number
+                        }
+                        baseline_total += impact
+                    except Exception as e:
+                        print(f"Error processing LCA activity {lca_activity.activity_name}: {e}")
+            
+            # Check if we have any activities to analyze
+            logger.info(f"Total activities found: {len(activity_impacts)}, baseline_total: {baseline_total}")
+            
+            if not activity_impacts:
+                logger.warning("No activities with emissions found")
+                
+                # Count all activities
+                total_emission_activities = 0
+                total_lca_activities = 0
+                uncalculated_lca_count = 0
+                
+                for scope in project.scopes.all():
+                    total_emission_activities += scope.activities.count()
+                    total_lca = scope.lca_activities.count()
+                    total_lca_activities += total_lca
+                    uncalculated_lca_count += scope.lca_activities.filter(
+                        Q(calculated_emissions=0) | Q(calculated_emissions__isnull=True)
+                    ).count()
+                
+                logger.info(f"Project stats - Emission activities: {total_emission_activities}, LCA activities: {total_lca_activities}, Uncalculated LCA: {uncalculated_lca_count}")
+                
+                error_message = f'No activities with calculated emissions found in project "{project.name}". '
+                
+                if uncalculated_lca_count > 0:
+                    error_message += f'There are {uncalculated_lca_count} LCA activities that need to be calculated. Please go to the Project Details page and click "Calculate All LCA Activities" before running sensitivity analysis.'
+                elif total_emission_activities == 0 and total_lca_activities == 0:
+                    error_message += 'This project has no activities. Please add emission factor activities or LCA activities to your project first.'
+                else:
+                    error_message += 'Please ensure your activities have valid emission factors or calculated LCA impacts.'
+                
+                return Response({
+                    'success': False,
+                    'error': error_message,
+                    'details': {
+                        'total_emission_activities': total_emission_activities,
+                        'total_lca_activities': total_lca_activities,
+                        'uncalculated_lca_activities': uncalculated_lca_count
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Calculate adjusted emissions
+            adjusted_total = 0.0
+            tornado_data = []
+            
+            for activity_id, activity_data in activity_impacts.items():
+                adjustment_pct = adjustments.get(activity_id, 0)
+                adjustment_factor = 1 + (adjustment_pct / 100)
+                adjusted_impact = activity_data['baseline'] * adjustment_factor
+                adjusted_total += adjusted_impact
+                
+                # Calculate impact of this activity on total
+                impact_change = adjusted_impact - activity_data['baseline']
+                
+                tornado_data.append({
+                    'activity': activity_data['name'][:40],  # Truncate for readability
+                    'activity_id': activity_id,
+                    'baseline': round(activity_data['baseline'], 4),
+                    'adjusted': round(adjusted_impact, 4),
+                    'impact': round(impact_change, 4),
+                    'scope': activity_data['scope']
+                })
+            
+            # Generate timeline projection
+            timeline = []
+            for year in range(timeline_years + 1):
+                year_factor = (1 + growth_rate) ** year
+                timeline.append({
+                    'year': year,
+                    'baseline': round(baseline_total * year_factor, 4),
+                    'adjusted': round(adjusted_total * year_factor, 4)
+                })
+            
+            return Response({
+                'success': True,
+                'baseline_total': round(baseline_total, 4),
+                'adjusted_total': round(adjusted_total, 4),
+                'impact_change': round(adjusted_total - baseline_total, 4),
+                'impact_change_pct': round((adjusted_total - baseline_total) / baseline_total * 100, 2) if baseline_total > 0 else 0,
+                'tornado': tornado_data,
+                'timeline': timeline,
+                'timeline_years': timeline_years,
+                'growth_rate': growth_rate
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            trace = traceback.format_exc()
+            
+            logger.error(f"=== Sensitivity Analysis Error ===")
+            logger.error(f"Error: {error_msg}")
+            logger.error(f"Traceback: {trace}")
+            
+            return Response({
+                'success': False,
+                'error': error_msg,
+                'traceback': trace
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['POST'])
+    def product(self, request):
+        """
+        Run sensitivity analysis on a product by varying quantity.
+        Expected body: {
+            "database_name": "ecoinvent-3.9.1-cutoff",
+            "activity_code": "abc123",
+            "base_quantity": 1.0,
+            "quantity_range": [-50, 200],  # Vary from -50% to +200%
+            "timeline_years": 5,
+            "impact_method": ["IPCC 2013", "climate change", "GWP 100a"] (optional)
+        }
+        Returns sensitivity curve showing emissions vs quantity
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            import numpy as np
+            
+            database_name = request.data.get('database_name')
+            activity_code = request.data.get('activity_code')
+            base_quantity = request.data.get('base_quantity', 1.0)
+            quantity_range = request.data.get('quantity_range', [-50, 50])
+            timeline_years = request.data.get('timeline_years', 5)
+            impact_method = request.data.get('impact_method')
+            
+            if not database_name or not activity_code:
+                return Response({
+                    'success': False,
+                    'error': 'database_name and activity_code are required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            
+            # Use default method if not specified
+            if not impact_method:
+                impact_method = ('IPCC 2013', 'climate change', 'GWP 100a')
+            else:
+                impact_method = tuple(impact_method)
+            
+            # Calculate base emissions
+            base_result = bw2Instance.calculate_lca_impact(
+                database_name=database_name,
+                activity_code=activity_code,
+                quantity=float(base_quantity),
+                impact_method=impact_method
+            )
+            
+            if not base_result['success']:
+                return Response({
+                    'success': False,
+                    'error': f"Failed to calculate base emissions: {base_result.get('error', 'Unknown error')}"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            base_emissions = base_result['impact'] / 1000  # to tCO2e
+            
+            # Generate sensitivity curve (10 points across range)
+            sensitivity_points = []
+            num_points = 10
+            min_pct, max_pct = quantity_range
+            
+            for i in range(num_points + 1):
+                pct = min_pct + (max_pct - min_pct) * (i / num_points)
+                quantity = base_quantity * (1 + pct / 100)
+                
+                if quantity < 0:
+                    quantity = 0
+                
+                result = bw2Instance.calculate_lca_impact(
+                    database_name=database_name,
+                    activity_code=activity_code,
+                    quantity=float(quantity),
+                    impact_method=impact_method
+                )
+                
+                if result['success']:
+                    emissions = result['impact'] / 1000  # to tCO2e
+                    sensitivity_points.append({
+                        'quantity': round(quantity, 4),
+                        'quantity_pct': round(pct, 1),
+                        'emissions': round(emissions, 4)
+                    })
+            
+            # Generate timeline (assuming constant usage each year)
+            timeline = []
+            for year in range(timeline_years + 1):
+                timeline.append({
+                    'year': year,
+                    'baseline': round(base_emissions * (year + 1), 4),  # Cumulative
+                    'adjusted': round(base_emissions * (year + 1), 4)  # Same for product (no growth assumed)
+                })
+            
+            # Find min and max emissions from sensitivity curve
+            emissions_values = [p['emissions'] for p in sensitivity_points]
+            
+            return Response({
+                'success': True,
+                'base_quantity': base_quantity,
+                'base_emissions': round(base_emissions, 4),
+                'min_emissions': round(min(emissions_values), 4),
+                'max_emissions': round(max(emissions_values), 4),
+                'sensitivity_curve': sensitivity_points,
+                'timeline': timeline,
+                'timeline_years': timeline_years
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
