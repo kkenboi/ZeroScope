@@ -94,7 +94,11 @@ const Layout = ({ children }) => {
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
             <ListItemButton
-              selected={location.pathname === item.path}
+              selected={
+                item.path === "/"
+                  ? location.pathname === "/"
+                  : location.pathname.startsWith(item.path)
+              }
               onClick={() => {
                 navigate(item.path)
               }}
@@ -119,7 +123,7 @@ const Layout = ({ children }) => {
               <ListItemText
                 primary={collapsed ? item.text.charAt(0) : item.text}
                 primaryTypographyProps={{
-                  fontWeight: location.pathname === item.path ? 600 : 500,
+                  fontWeight: (item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)) ? 600 : 500,
                   fontSize: collapsed ? "1rem" : "0.875rem",
                   textAlign: collapsed ? "center" : "left",
                 }}
