@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Box,
   Card,
@@ -13,101 +13,131 @@ import {
   Select,
   FormControl,
   InputLabel,
+  CircularProgress,
+  Alert,
 } from "@mui/material"
 import { BarChart } from "@mui/x-charts/BarChart"
 import { PieChart } from "@mui/x-charts/PieChart"
 import { useSidebar } from "../layout/Layout"
+import { useNavigate } from "react-router-dom"
 
 const EnvironmentalDashboard = () => {
   const theme = useTheme()
+  const navigate = useNavigate()
   const [timeRange, setTimeRange] = useState("6months")
   const { collapsed } = useSidebar()
 
-  // Sample data for charts
-  const monthlyEmissions = [
-    { month: "Jan", emissions: 2400, target: 2000 },
-    { month: "Feb", emissions: 1398, target: 2000 },
-    { month: "Mar", emissions: 9800, target: 2000 },
-    { month: "Apr", emissions: 3908, target: 2000 },
-    { month: "May", emissions: 4800, target: 2000 },
-    { month: "Jun", emissions: 3800, target: 2000 },
-  ]
+  // State for real data
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [stats, setStats] = useState(null)
+  const [projects, setProjects] = useState([])
 
-  const emissionsBySource = [
-    { id: 0, value: 45, label: "Energy", color: theme.palette.primary.main },
-    { id: 1, value: 25, label: "Transportation", color: theme.palette.secondary.main },
-    { id: 2, value: 20, label: "Manufacturing", color: theme.palette.success.main },
-    { id: 3, value: 10, label: "Waste", color: theme.palette.warning.main },
-  ]
+  // Fetch dashboard data
+  useEffect(() => {
+    fetchDashboardData()
+  }, [timeRange])
 
-  const activeProjects = [
-    {
-      id: 1,
-      name: "Solar Panel Installation",
-      type: "Renewable Energy",
-      progress: 75,
-      status: "In Progress",
-      reduction: "2.5 tons CO2/year",
-    },
-    {
-      id: 2,
-      name: "Fleet Electrification",
-      type: "Transportation",
-      progress: 45,
-      status: "Planning",
-      reduction: "15 tons CO2/year",
-    },
-    {
-      id: 3,
-      name: "Energy Efficiency Upgrade",
-      type: "Energy",
-      progress: 90,
-      status: "Near Completion",
-      reduction: "8.2 tons CO2/year",
-    },
-    {
-      id: 4,
-      name: "Office Lighting Retrofit",
-      type: "Energy",
-      progress: 60,
-      status: "In Progress",
-      reduction: "3.4 tons CO2/year",
-    },
-    {
-      id: 5,
-      name: "Supply Chain Optimization",
-      type: "Logistics",
-      progress: 25,
-      status: "Starting",
-      reduction: "5.7 tons CO2/year",
-    },
-    {
-      id: 6,
-      name: "Waste Reduction Program",
-      type: "Waste Management",
-      progress: 30,
-      status: "Starting",
-      reduction: "1.8 tons CO2/year",
-    },
-  ]
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch dashboard stats
+      const statsResponse = await fetch(`/api/dashboard/stats/?period=${timeRange}`)
+      if (!statsResponse.ok) throw new Error('Failed to fetch dashboard stats')
+      const statsData = await statsResponse.json()
+      setStats(statsData)
+
+      // Fetch projects
+      const projectsResponse = await fetch('/api/projects/')
+      if (!projectsResponse.ok) throw new Error('Failed to fetch projects')
+      const projectsData = await projectsResponse.json()
+      if (Array.isArray(projectsData)) {
+        setProjects(projectsData)
+      } else if (projectsData.results && Array.isArray(projectsData.results)) {
+        setProjects(projectsData.results)
+      } else {
+        setProjects([])
+        console.warn('Unexpected projects API response format:', projectsData)
+      }
+
+    } catch (err) {
+      console.error('Dashboard data fetch error:', err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Transform data for charts
+  const getMonthlyEmissionsData = () => {
+    if (!stats || !stats.monthly_emissions) return []
+    return stats.monthly_emissions
+  }
+
+  const getEmissionsBySourceData = () => {
+    if (!stats || !stats.emissions_by_scope) return []
+
+    const scopeLabels = {
+      1: "Scope 1 (Direct)",
+      2: "Scope 2 (Energy)",
+      3: "Scope 3 (Indirect)"
+    }
+
+    const scopeColors = {
+      1: theme.palette.primary.main,
+      2: theme.palette.secondary.main,
+      3: theme.palette.success.main
+    }
+
+    return Object.entries(stats.emissions_by_scope).map(([scope, value], index) => ({
+      id: index,
+      value: value,
+      label: scopeLabels[scope] || `Scope ${scope}`,
+      color: scopeColors[scope] || theme.palette.grey[500]
+    })).filter(item => item.value > 0) // Only show scopes with emissions
+  }
+
+  // Process projects data
+  const getActiveProjects = () => {
+    if (!Array.isArray(projects)) return []
+
+    return projects.map(project => {
+      // Calculate total emissions for this project
+      const totalEmissions = project.scopes?.reduce((sum, scope) =>
+        sum + parseFloat(scope.total_emissions_tco2e || 0), 0) || 0
+
+      return {
+        id: project.project_id,
+        name: project.name,
+        type: "Carbon Footprint", // Generic type for now
+        progress: 100, // Placeholder as we don't have progress tracking yet
+        status: "Active",
+        reduction: `${totalEmissions.toFixed(2)} tCO2e`, // Showing total emissions instead of reduction
+        emissions: totalEmissions
+      }
+    }).sort((a, b) => b.emissions - a.emissions) // Sort by emissions (highest first)
+      .slice(0, 6) // Show top 6
+  }
 
   const getStatusColor = (status) => {
     switch (status) {
+      case "Active":
+        return "success"
       case "In Progress":
         return "primary"
       case "Planning":
         return "warning"
-      case "Near Completion":
-        return "success"
-      case "Starting":
-        return "secondary"
+      case "Completed":
+        return "info"
       default:
         return "default"
     }
   }
 
   const handleProjectClick = (project) => {
-    console.log("Clicked project:", project.name)
+    navigate(`/projects/${project.id}`)
   }
 
   // Dynamic sizing based on sidebar state
@@ -115,6 +145,27 @@ const EnvironmentalDashboard = () => {
   const projectCardHeight = collapsed ? "700px" : "600px"
   const pieRadius = collapsed ? 95 : 75
   const pieInnerRadius = Math.floor(pieRadius / 3)
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">Error loading dashboard: {error}</Alert>
+        <Button sx={{ mt: 2 }} variant="contained" onClick={fetchDashboardData}>Retry</Button>
+      </Box>
+    )
+  }
+
+  const monthlyEmissions = getMonthlyEmissionsData()
+  const emissionsBySource = getEmissionsBySourceData()
+  const activeProjects = getActiveProjects()
 
   return (
     <Box
@@ -146,10 +197,10 @@ const EnvironmentalDashboard = () => {
               Total Emissions
             </Typography>
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-              24.5
+              {stats?.total_emissions?.toLocaleString() || 0}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              tons CO2
+              tons CO2e
             </Typography>
           </CardContent>
         </Card>
@@ -159,8 +210,15 @@ const EnvironmentalDashboard = () => {
             <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>
               Monthly Change
             </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, color: "success.main" }}>
-              -12.3%
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+                mb: 1,
+                color: (stats?.monthly_change || 0) <= 0 ? "success.main" : "error.main"
+              }}
+            >
+              {stats?.monthly_change ? `${stats.monthly_change > 0 ? '+' : ''}${stats.monthly_change}%` : 'N/A'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               vs last month
@@ -171,37 +229,27 @@ const EnvironmentalDashboard = () => {
         <Card sx={{ flex: 1, minWidth: 0 }}>
           <CardContent sx={{ pb: "16px !important", textAlign: "center" }}>
             <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>
-              Target Progress
+              Active Projects
             </Typography>
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-              68%
+              {stats?.total_projects || 0}
             </Typography>
-            <LinearProgress
-              variant="determinate"
-              value={68}
-              sx={{
-                height: 6,
-                borderRadius: 3,
-                bgcolor: "rgba(46, 125, 50, 0.1)",
-                "& .MuiLinearProgress-bar": {
-                  bgcolor: "primary.main",
-                },
-                mx: 2,
-              }}
-            />
+            <Typography variant="body2" color="text.secondary">
+              projects
+            </Typography>
           </CardContent>
         </Card>
 
         <Card sx={{ flex: 1, minWidth: 0 }}>
           <CardContent sx={{ pb: "16px !important", textAlign: "center" }}>
             <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>
-              Active Projects
+              Data Quality
             </Typography>
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-              {activeProjects.length}
+              High
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              in progress
+              based on inputs
             </Typography>
           </CardContent>
         </Card>
@@ -213,49 +261,61 @@ const EnvironmentalDashboard = () => {
         <Box sx={{ width: "55%", display: "flex", flexDirection: "column", gap: 2.5, minWidth: 0 }}>
           {/* Bar Chart */}
           <Card sx={{ height: chartHeight, minWidth: 0 }}>
-            <CardHeader title="Emissions vs Target" sx={{ pb: 1 }} />
+            <CardHeader title="Emissions Trend" sx={{ pb: 1 }} />
             <CardContent sx={{ pt: 0, height: "calc(100% - 64px)", p: 1 }}>
               <Box sx={{ width: "100%", height: "100%" }}>
-                <BarChart
-                  dataset={monthlyEmissions}
-                  xAxis={[{ scaleType: "band", dataKey: "month" }]}
-                  series={[
-                    { dataKey: "emissions", label: "Actual", color: theme.palette.primary.main },
-                    { dataKey: "target", label: "Target", color: "#E5E7EB" },
-                  ]}
-                />
+                {monthlyEmissions.length > 0 ? (
+                  <BarChart
+                    dataset={monthlyEmissions}
+                    xAxis={[{ scaleType: "band", dataKey: "month_name" }]}
+                    series={[
+                      { dataKey: "emissions", label: "Actual Emissions", color: theme.palette.primary.main },
+                      // { dataKey: "target", label: "Target", color: "#E5E7EB" }, // Hiding target for now
+                    ]}
+                  />
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <Typography color="text.secondary">No emissions data available for this period</Typography>
+                  </Box>
+                )}
               </Box>
             </CardContent>
           </Card>
 
           {/* Pie Chart */}
           <Card sx={{ height: chartHeight, minWidth: 0 }}>
-            <CardHeader title="Emissions by Source" sx={{ pb: 1 }} />
+            <CardHeader title="Emissions by Scope" sx={{ pb: 1 }} />
             <CardContent sx={{ pt: 0, height: "calc(100% - 64px)", p: 1 }}>
               <Box sx={{ width: "100%", height: "100%", position: "relative" }}>
-                <PieChart
-                  key={`${pieRadius}-${collapsed}`}
-                  series={[
-                    {
-                      data: emissionsBySource,
-                      highlightScope: { fade: "global", highlight: "item" },
-                      faded: { innerRadius: pieInnerRadius, additionalRadius: -30, color: "gray" },
-                      innerRadius: pieInnerRadius,
-                      outerRadius: pieRadius,
-                      paddingAngle: 1,
-                      cornerRadius: 3,
-                      startAngle: 0,
-                      endAngle: 360,
-                      cx: "50%",
-                      cy: "50%",
-                    },
-                  ]}
-                  legend={{
-                    direction: "column",
-                    position: { vertical: "middle", horizontal: "" },
-                    padding: 0,
-                  }}
-                />
+                {emissionsBySource.length > 0 ? (
+                  <PieChart
+                    key={`${pieRadius}-${collapsed}`}
+                    series={[
+                      {
+                        data: emissionsBySource,
+                        highlightScope: { fade: "global", highlight: "item" },
+                        faded: { innerRadius: pieInnerRadius, additionalRadius: -30, color: "gray" },
+                        innerRadius: pieInnerRadius,
+                        outerRadius: pieRadius,
+                        paddingAngle: 1,
+                        cornerRadius: 3,
+                        startAngle: 0,
+                        endAngle: 360,
+                        cx: "50%",
+                        cy: "50%",
+                      },
+                    ]}
+                    legend={{
+                      direction: "column",
+                      position: { vertical: "middle", horizontal: "right" },
+                      padding: 0,
+                    }}
+                  />
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <Typography color="text.secondary">No emissions data available</Typography>
+                  </Box>
+                )}
               </Box>
             </CardContent>
           </Card>
@@ -265,9 +325,9 @@ const EnvironmentalDashboard = () => {
         <Box sx={{ width: "45%", display: "flex", flexDirection: "column", minWidth: 0 }}>
           <Card sx={{ height: projectCardHeight, minWidth: 0 }}>
             <CardHeader
-              title="Active Projects"
+              title="Top Projects"
               action={
-                <Button variant="outlined" size="small">
+                <Button variant="outlined" size="small" onClick={() => navigate('/projects')}>
                   View All
                 </Button>
               }
@@ -282,126 +342,120 @@ const EnvironmentalDashboard = () => {
                   justifyContent: "flex-start",
                 }}
               >
-                {activeProjects.map((project) => (
-                  <Card
-                    key={project.id}
-                    elevation={0}
-                    sx={{
-                      cursor: "pointer",
-                      transition: "all 0.2s ease-in-out",
-                      width: "calc(50% - 8px)",
-                      height: collapsed ? "220px" : "180px",
-                      minWidth: "180px",
-                      "&:hover": {
-                        transform: "translateY(-2px)",
-                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
-                      },
-                    }}
-                    onClick={() => handleProjectClick(project)}
-                  >
-                    <CardContent
+                {activeProjects.length > 0 ? (
+                  activeProjects.map((project) => (
+                    <Card
+                      key={project.id}
+                      elevation={0}
                       sx={{
-                        pb: "16px !important",
-                        height: "100%",
-                        display: "flex",
-                        flexDirection: "column",
-                        p: 2,
+                        cursor: "pointer",
+                        transition: "all 0.2s ease-in-out",
+                        width: "calc(50% - 8px)",
+                        height: collapsed ? "220px" : "180px",
+                        minWidth: "180px",
+                        border: `1px solid ${theme.palette.divider}`,
+                        "&:hover": {
+                          transform: "translateY(-2px)",
+                          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+                          borderColor: theme.palette.primary.main,
+                        },
                       }}
+                      onClick={() => handleProjectClick(project)}
                     >
-                      <Typography
-                        variant="subtitle2"
+                      <CardContent
                         sx={{
-                          fontWeight: 600,
-                          mb: 0.5,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          fontSize: "0.875rem",
-                          height: "20px",
-                        }}
-                        title={project.name}
-                      >
-                        {project.name}
-                      </Typography>
-                      <Typography
-                        color="text.secondary"
-                        variant="body2"
-                        sx={{
-                          mb: 2,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          fontSize: "0.75rem",
-                          height: "16px",
-                        }}
-                        title={project.type}
-                      >
-                        {project.type}
-                      </Typography>
-                      <Box sx={{ mb: 2, flex: 1 }}>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1, alignItems: "center" }}>
-                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                            Progress
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            sx={{ fontSize: "0.75rem", minWidth: "35px", textAlign: "right" }}
-                          >
-                            {project.progress}%
-                          </Typography>
-                        </Box>
-                        <LinearProgress
-                          variant="determinate"
-                          value={project.progress}
-                          sx={{
-                            height: 4,
-                            borderRadius: 2,
-                          }}
-                        />
-                      </Box>
-                      <Box
-                        sx={{
+                          pb: "16px !important",
+                          height: "100%",
                           display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          mt: "auto",
-                          gap: 1,
-                          height: "32px",
+                          flexDirection: "column",
+                          p: 2,
                         }}
                       >
-                        <Chip
-                          label={project.status}
-                          color={getStatusColor(project.status)}
-                          size="small"
-                          sx={{
-                            fontSize: "0.65rem",
-                            height: "24px",
-                            "& .MuiChip-label": {
-                              px: 1,
-                            },
-                          }}
-                        />
                         <Typography
-                          variant="body2"
-                          color="success.main"
+                          variant="subtitle2"
                           sx={{
                             fontWeight: 600,
-                            fontSize: "0.65rem",
-                            minWidth: "85px",
-                            textAlign: "right",
+                            mb: 0.5,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
+                            fontSize: "0.875rem",
+                            height: "20px",
                           }}
-                          title={project.reduction}
+                          title={project.name}
                         >
-                          {project.reduction}
+                          {project.name}
                         </Typography>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                ))}
+                        <Typography
+                          color="text.secondary"
+                          variant="body2"
+                          sx={{
+                            mb: 2,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            fontSize: "0.75rem",
+                            height: "16px",
+                          }}
+                          title={project.type}
+                        >
+                          {project.type}
+                        </Typography>
+                        <Box sx={{ mb: 2, flex: 1 }}>
+                          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1, alignItems: "center" }}>
+                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                              Total Impact
+                            </Typography>
+                          </Box>
+                          <Typography
+                            variant="h6"
+                            fontWeight={600}
+                            color="primary.main"
+                            sx={{ fontSize: "1.1rem" }}
+                          >
+                            {project.emissions.toFixed(2)}
+                            <Typography component="span" variant="caption" sx={{ ml: 0.5 }}>tCO2e</Typography>
+                          </Typography>
+                        </Box>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            mt: "auto",
+                            gap: 1,
+                            height: "32px",
+                          }}
+                        >
+                          <Chip
+                            label={project.status}
+                            color={getStatusColor(project.status)}
+                            size="small"
+                            sx={{
+                              fontSize: "0.65rem",
+                              height: "24px",
+                              "& .MuiChip-label": {
+                                px: 1,
+                              },
+                            }}
+                          />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  <Box sx={{ width: '100%', textAlign: 'center', py: 4 }}>
+                    <Typography color="text.secondary">No active projects found</Typography>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      sx={{ mt: 2 }}
+                      onClick={() => navigate('/projects')}
+                    >
+                      Create Project
+                    </Button>
+                  </Box>
+                )}
               </Box>
             </CardContent>
           </Card>

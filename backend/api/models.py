@@ -319,6 +319,11 @@ class EmissionActivity(models.Model):
     # Results
     calculated_emissions = models.DecimalField(max_digits=15, decimal_places=6, default=0)  # in tCO2e
     
+    # Time period tracking (for monthly/quarterly emissions analysis)
+    period_start = models.DateField(null=True, blank=True, help_text="Start of reporting period (e.g., 2024-01-01)")
+    period_end = models.DateField(null=True, blank=True, help_text="End of reporting period (e.g., 2024-01-31)")
+    is_recurring = models.BooleanField(default=True, help_text="Whether this activity recurs regularly (e.g., monthly electricity)")
+    
     # Tracking
     created_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True)
@@ -416,6 +421,11 @@ class LCAActivity(models.Model):
         ("investments", "15. Investments"),
     ]
     scope3_category = models.CharField(max_length=64, blank=True, null=True, choices=SCOPE3_CATEGORY_CHOICES)
+    
+    # Time period tracking (optional for one-time LCA products)
+    period_start = models.DateField(null=True, blank=True, help_text="Start of reporting period")
+    period_end = models.DateField(null=True, blank=True, help_text="End of reporting period")
+    is_recurring = models.BooleanField(default=False, help_text="Whether this activity recurs (usually False for LCA products)")
     
     # Tracking
     created_date = models.DateTimeField(auto_now_add=True)

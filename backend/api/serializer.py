@@ -113,6 +113,9 @@ class EmissionActivitySerializer(serializers.ModelSerializer):
             "emission_factor_id",
             "scope_number",
             "calculated_emissions",
+            "period_start",
+            "period_end",
+            "is_recurring",
         ]
 
     def create(self, validated_data):
@@ -158,6 +161,9 @@ class EmissionActivityListSerializer(serializers.ModelSerializer):
             "unit",
             "emission_factor",
             "calculated_emissions",
+            "period_start",
+            "period_end",
+            "is_recurring",
         ]
 
 
@@ -194,6 +200,9 @@ class LCAActivitySerializer(serializers.ModelSerializer):
             "calculated_emissions",
             "emissions_tco2e",
             "scope3_category",
+            "period_start",
+            "period_end",
+            "is_recurring",
             "created_date",
             "last_modified",
             "last_calculated",
@@ -300,6 +309,9 @@ class LCAActivityListSerializer(serializers.ModelSerializer):
             "emissions_tco2e",
             "impact_method_display",
             "last_calculated",
+            "period_start",
+            "period_end",
+            "is_recurring",
         ]
     
     def get_emissions_tco2e(self, obj):

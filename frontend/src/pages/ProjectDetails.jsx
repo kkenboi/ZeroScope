@@ -25,10 +25,12 @@ import {
   ToggleButtonGroup,
   Alert,
   IconButton,
+  Checkbox,
+  FormControlLabel,
 } from "@mui/material"
 import { BarChart } from "@mui/x-charts"
 import { DataGrid } from "@mui/x-data-grid"
-import { 
+import {
   ArrowBack as BackIcon,
   Calculate as CalculateIcon,
   Science as ScienceIcon,
@@ -56,7 +58,10 @@ function ProjectDetails() {
     description: "",
     quantity: "",
     emissionFactorId: "",
-    scope3Category: ""
+    scope3Category: "",
+    isRecurring: true,
+    periodStart: "",
+    periodEnd: ""
   })
   const [selectedScopes, setSelectedScopes] = useState([1, 2, 3])
   const [calculating, setCalculating] = useState(false)
@@ -86,13 +91,13 @@ function ProjectDetails() {
       try {
         let allFactors = [];
         let url = "/api/emission-factors/?page_size=100"; // Use smaller page size
-        
+
         while (url) {
           const response = await fetch(url);
           if (!response.ok) throw new Error("Failed to fetch emission factors");
-          
+
           const data = await response.json();
-          
+
           // Handle both array and paginated responses
           if (Array.isArray(data)) {
             allFactors = [...allFactors, ...data];
@@ -104,7 +109,7 @@ function ProjectDetails() {
             break;
           }
         }
-        
+
         console.log(`Loaded ${allFactors.length} emission factors`);
         console.log('Sample factor structure:', allFactors[0]);
         console.log('Factors by scope:', {
@@ -118,7 +123,7 @@ function ProjectDetails() {
         setFactors([]);
       }
     };
-    
+
     fetchAllFactors();
   }, [])
 
@@ -128,10 +133,10 @@ function ProjectDetails() {
     }
 
     try {
-      const endpoint = activityType === 'LCA' 
+      const endpoint = activityType === 'LCA'
         ? `/api/lca-activities/${activityId}/`
         : `/api/activities/${activityId}/`
-      
+
       const deleteResponse = await fetch(`http://localhost:8000${endpoint}`, {
         method: 'DELETE',
       })
@@ -155,17 +160,17 @@ function ProjectDetails() {
   // Filtered factors based on selected scope and category
   const availableFactors = useMemo(() => {
     console.log(`Filtering factors: total=${factors.length}, scope=${newActivity.scope}, category=${newActivity.scope3Category}`);
-    
+
     // Filter by applicable_scopes instead of scope
     let filtered = factors.filter(f => f.applicable_scopes && f.applicable_scopes.includes(newActivity.scope));
     console.log(`After scope filter: ${filtered.length} factors`);
-    
+
     // For Scope 3, also filter by category if one is selected
     if (newActivity.scope === 3 && newActivity.scope3Category) {
       filtered = filtered.filter(f => f.category === newActivity.scope3Category);
       console.log(`After category filter (${newActivity.scope3Category}): ${filtered.length} factors`);
     }
-    
+
     return filtered;
   }, [factors, newActivity.scope, newActivity.scope3Category])
 
@@ -183,7 +188,7 @@ function ProjectDetails() {
       alert("Please select an LCA product")
       return
     }
-    
+
     if (activityType === 'emission_factor' && !newActivity.emissionFactorId) {
       alert("Please select an emission factor")
       return
@@ -218,6 +223,9 @@ function ProjectDetails() {
           impact_method: {
             method: ['ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)']
           },
+          is_recurring: newActivity.isRecurring,
+          period_start: newActivity.periodStart || null,
+          period_end: newActivity.isRecurring ? newActivity.periodEnd : null,
         };
 
         if (newActivity.scope === 3 && newActivity.scope3Category) {
@@ -269,11 +277,11 @@ function ProjectDetails() {
       } else {
         // Create regular Emission Factor Activity
         const selectedFactor = factors.find(f => f.factor_id === newActivity.emissionFactorId);
-        
+
         const categoryMapping = {
           'purchased_goods_services': 'purchased_goods_services',
           'capital_goods': 'capital_goods',
-          'fuel_energy_related': 'fuel_energy_related', 
+          'fuel_energy_related': 'fuel_energy_related',
           'upstream_transport': 'upstream_transport',
           'waste_generated': 'waste_generated',
           'business_travel': 'business_travel',
@@ -287,7 +295,7 @@ function ProjectDetails() {
           'franchises': 'franchises',
           'investments': 'investments'
         };
-        
+
         payload = {
           project: project.project_id,
           scope_number: newActivity.scope,
@@ -296,6 +304,9 @@ function ProjectDetails() {
           quantity: Number(newActivity.quantity),
           unit: selectedFactor.unit,
           emission_factor_id: selectedFactor.factor_id,
+          is_recurring: newActivity.isRecurring,
+          period_start: newActivity.periodStart || null,
+          period_end: newActivity.isRecurring ? newActivity.periodEnd : null,
         };
 
         if (newActivity.scope === 3 && newActivity.scope3Category) {
@@ -323,7 +334,10 @@ function ProjectDetails() {
         description: "",
         quantity: "",
         emissionFactorId: "",
-        scope3Category: ""
+        scope3Category: "",
+        isRecurring: true,
+        periodStart: "",
+        periodEnd: ""
       });
       setSelectedLCAProduct(null);
       setActivityType('emission_factor');
@@ -409,7 +423,7 @@ function ProjectDetails() {
         </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
-            
+
             {/* Activity Type Selection */}
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -473,14 +487,14 @@ function ProjectDetails() {
                 </Typography>
               </Alert>
             )}
-            
+
             {/* Scope Selection */}
             <TextField
               select
               label="Emission Scope"
               value={newActivity.scope}
-              onChange={e => setNewActivity(prev => ({ 
-                ...prev, 
+              onChange={e => setNewActivity(prev => ({
+                ...prev,
                 scope: Number(e.target.value),
                 emissionFactorId: "", // Reset factor when scope changes
                 scope3Category: "" // Reset scope 3 category
@@ -560,15 +574,15 @@ function ProjectDetails() {
                 select
                 label="Scope 3 Category"
                 value={newActivity.scope3Category}
-                onChange={e => setNewActivity(prev => ({ 
-                  ...prev, 
+                onChange={e => setNewActivity(prev => ({
+                  ...prev,
                   scope3Category: e.target.value,
                   emissionFactorId: activityType === 'emission_factor' ? "" : prev.emissionFactorId
                 }))}
                 fullWidth
                 required
-                helperText={activityType === 'emission_factor' 
-                  ? "Filter emission factors by Scope 3 category" 
+                helperText={activityType === 'emission_factor'
+                  ? "Filter emission factors by Scope 3 category"
                   : "Select the appropriate Scope 3 category for this LCA product"
                 }
               >
@@ -601,8 +615,8 @@ function ProjectDetails() {
                 required
                 disabled={availableFactors.length === 0}
                 helperText={
-                  availableFactors.length === 0 
-                    ? `No emission factors available for Scope ${newActivity.scope}${newActivity.scope === 3 && newActivity.scope3Category ? ` - ${newActivity.scope3Category}` : ''}` 
+                  availableFactors.length === 0
+                    ? `No emission factors available for Scope ${newActivity.scope}${newActivity.scope === 3 && newActivity.scope3Category ? ` - ${newActivity.scope3Category}` : ''}`
                     : undefined
                 }
               >
@@ -662,11 +676,61 @@ function ProjectDetails() {
                 })()}
                 InputProps={{ readOnly: true }}
                 fullWidth
-                helperText={activityType === 'lca' 
-                  ? "Unit from LCA product" 
+                helperText={activityType === 'lca'
+                  ? "Unit from LCA product"
                   : "Unit from emission factor"
                 }
               />
+            </Box>
+
+            {/* Time Period Tracking */}
+            <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px dashed', borderColor: 'divider' }}>
+              <Typography variant="subtitle2" gutterBottom>Time Period</Typography>
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={newActivity.isRecurring}
+                    onChange={(e) => setNewActivity(prev => ({ ...prev, isRecurring: e.target.checked }))}
+                  />
+                }
+                label="Recurring Activity (e.g., monthly electricity, fuel)"
+                sx={{ mb: 1 }}
+              />
+
+              {newActivity.isRecurring ? (
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    label="Period Start"
+                    type="date"
+                    value={newActivity.periodStart}
+                    onChange={(e) => setNewActivity(prev => ({ ...prev, periodStart: e.target.value }))}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                    required
+                  />
+                  <TextField
+                    label="Period End"
+                    type="date"
+                    value={newActivity.periodEnd}
+                    onChange={(e) => setNewActivity(prev => ({ ...prev, periodEnd: e.target.value }))}
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                    required
+                  />
+                </Box>
+              ) : (
+                <TextField
+                  label="Activity Date"
+                  type="date"
+                  value={newActivity.periodStart}
+                  onChange={(e) => setNewActivity(prev => ({ ...prev, periodStart: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                  required
+                  helperText="Date when this activity occurred"
+                />
+              )}
             </Box>
 
             {/* Calculation Preview */}
@@ -696,7 +760,7 @@ function ProjectDetails() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 2 }}>
-          <Button 
+          <Button
             onClick={() => {
               setDialogOpen(false)
               setNewActivity({
@@ -705,7 +769,10 @@ function ProjectDetails() {
                 description: "",
                 quantity: "",
                 emissionFactorId: "",
-                scope3Category: ""
+                scope3Category: "",
+                isRecurring: true,
+                periodStart: "",
+                periodEnd: ""
               })
               setSelectedLCAProduct(null)
               setActivityType('emission_factor')
@@ -714,12 +781,12 @@ function ProjectDetails() {
           >
             Cancel
           </Button>
-          <Button 
-            variant="contained" 
+          <Button
+            variant="contained"
             onClick={handleSubmit}
             disabled={
               calculating ||
-              !newActivity.activityName || 
+              !newActivity.activityName ||
               !newActivity.quantity ||
               (activityType === 'emission_factor' ? !newActivity.emissionFactorId : !selectedLCAProduct)
             }
@@ -814,13 +881,13 @@ function ProjectDetails() {
               });
 
             const columns = [
-              { 
-                field: 'type', 
-                headerName: 'Type', 
+              {
+                field: 'type',
+                headerName: 'Type',
                 width: 130,
                 renderCell: (params) => (
-                  <Chip 
-                    label={params.value} 
+                  <Chip
+                    label={params.value}
                     size="small"
                     color={params.value === 'LCA' ? 'secondary' : 'default'}
                     icon={params.value === 'LCA' ? <ScienceIcon /> : <CalculateIcon />}
@@ -833,14 +900,14 @@ function ProjectDetails() {
               { field: 'unit', headerName: 'Unit', width: 100 },
               { field: 'source', headerName: 'Source', flex: 1, minWidth: 200 },
               { field: 'emissions', headerName: 'tCO₂e', width: 120, type: 'number' },
-              { 
-                field: 'actions', 
-                headerName: 'Actions', 
+              {
+                field: 'actions',
+                headerName: 'Actions',
                 width: 100,
                 sortable: false,
                 renderCell: (params) => (
-                  <IconButton 
-                    size="small" 
+                  <IconButton
+                    size="small"
                     color="error"
                     onClick={() => handleDeleteActivity(params.row.activityId, params.row.type)}
                   >
