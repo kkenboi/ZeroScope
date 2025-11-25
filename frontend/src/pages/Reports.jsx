@@ -124,26 +124,26 @@ const Reports = () => {
             </Card>
           </Grid>
           <Grid item xs={12} md={3}>
-            <Card>
+            <Card sx={{ borderTop: 4, borderColor: 'scopes.scope1' }}>
               <CardContent>
                 <Typography variant="subtitle2" color="text.secondary">Scope 1 (Direct)</Typography>
-                <Typography variant="h5" fontWeight="bold">{summary.scope_1_total} tCO₂e</Typography>
+                <Typography variant="h5" fontWeight="bold" sx={{ color: 'scopes.scope1' }}>{summary.scope_1_total} tCO₂e</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} md={3}>
-            <Card>
+            <Card sx={{ borderTop: 4, borderColor: 'scopes.scope2' }}>
               <CardContent>
                 <Typography variant="subtitle2" color="text.secondary">Scope 2 (Energy)</Typography>
-                <Typography variant="h5" fontWeight="bold">{summary.scope_2_total} tCO₂e</Typography>
+                <Typography variant="h5" fontWeight="bold" sx={{ color: 'scopes.scope2' }}>{summary.scope_2_total} tCO₂e</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} md={3}>
-            <Card>
+            <Card sx={{ borderTop: 4, borderColor: 'scopes.scope3' }}>
               <CardContent>
                 <Typography variant="subtitle2" color="text.secondary">Scope 3 (Indirect)</Typography>
-                <Typography variant="h5" fontWeight="bold">{summary.scope_3_total} tCO₂e</Typography>
+                <Typography variant="h5" fontWeight="bold" sx={{ color: 'scopes.scope3' }}>{summary.scope_3_total} tCO₂e</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -151,11 +151,15 @@ const Reports = () => {
 
         <Typography variant="h6" gutterBottom>Detailed Breakdown</Typography>
         {[1, 2, 3].map(scope => (
-          <Card key={scope} sx={{ mb: 2 }}>
+          <Card key={scope} sx={{ mb: 2, borderLeft: 4, borderColor: `scopes.scope${scope}` }}>
             <CardHeader
               title={`Scope ${scope}`}
               subheader={scope === 1 ? "Direct Emissions" : scope === 2 ? "Purchased Energy" : "Value Chain"}
-              sx={{ bgcolor: 'action.hover', py: 1.5 }}
+              sx={{
+                bgcolor: 'action.hover',
+                py: 1.5,
+                '& .MuiCardHeader-title': { color: `scopes.scope${scope}` }
+              }}
             />
             <CardContent>
               {details[scope].length > 0 ? (

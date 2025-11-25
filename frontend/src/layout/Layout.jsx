@@ -111,6 +111,9 @@ const Layout = ({ children }) => {
                 "&.Mui-selected": {
                   backgroundColor: "primary.main",
                   color: "white",
+                  "& .MuiListItemText-primary": {
+                    color: "white",
+                  },
                   "&:hover": {
                     backgroundColor: "primary.dark",
                   },

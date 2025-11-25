@@ -49,7 +49,10 @@ function TabPanel({ children, value, index }) {
   );
 }
 
+import { useTheme } from "@mui/material/styles";
+
 function Analysis() {
+  const theme = useTheme();
   const [tabValue, setTabValue] = useState(0);
   const [renderError, setRenderError] = useState(null);
 
@@ -495,7 +498,7 @@ function Analysis() {
           <XAxis dataKey="bin" label={{ value: "tCO₂e", position: "insideBottom", offset: -5 }} />
           <YAxis label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
           <Tooltip />
-          <Bar dataKey="count" fill="#1976d2" />
+          <Bar dataKey="count" fill={theme.palette.primary.main} />
         </BarChart>
       </ResponsiveContainer>
     );

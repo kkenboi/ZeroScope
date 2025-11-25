@@ -86,9 +86,9 @@ const EnvironmentalDashboard = () => {
     }
 
     const scopeColors = {
-      1: theme.palette.primary.main,
-      2: theme.palette.secondary.main,
-      3: theme.palette.success.main
+      1: theme.palette.scopes.scope1,
+      2: theme.palette.scopes.scope2,
+      3: theme.palette.scopes.scope3
     }
 
     return Object.entries(stats.emissions_by_scope).map(([scope, value], index) => ({

@@ -19,23 +19,28 @@ const theme = createTheme({
   palette: {
     mode: "light",
     primary: {
-      main: "#2E7D32",
+      main: "#2E7D32", // Forest Green (Nature)
       light: "#4CAF50",
       dark: "#1B5E20",
       contrastText: "#ffffff",
     },
     secondary: {
-      main: "#5D4037",
+      main: "#5D4037", // Brown (Earth)
       light: "#8D6E63",
       dark: "#3E2723",
       contrastText: "#ffffff",
     },
+    scopes: {
+      scope1: "#8D6E63", // Soft Brown (Material Brown 400)
+      scope2: "#FBC02D", // Soft Yellow (Material Yellow 700 - readable on white)
+      scope3: "#66BB6A", // Soft Green (Material Green 400)
+    },
     background: {
-      default: "#FAFAFA",
+      default: "#F3F4F6", // Slightly darker grey for better contrast with white cards
       paper: "#FFFFFF",
     },
     success: {
-      main: "#388E3C",
+      main: "#2E7D32",
       light: "#81C784",
     },
     warning: {
@@ -47,10 +52,10 @@ const theme = createTheme({
       light: "#EF5350",
     },
     text: {
-      primary: "#1A1A1A",
-      secondary: "#6B7280",
+      primary: "#111827", // Cool Gray 900
+      secondary: "#6B7280", // Cool Gray 500
     },
-    divider: "#F3F4F6",
+    divider: "#E5E7EB",
   },
   typography: {
     fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -58,58 +63,57 @@ const theme = createTheme({
       fontWeight: 700,
       fontSize: "1.75rem",
       letterSpacing: "-0.025em",
-      color: "#1A1A1A",
+      color: "#111827",
     },
     h5: {
       fontWeight: 600,
       fontSize: "1.25rem",
       letterSpacing: "-0.02em",
+      color: "#111827",
     },
     h6: {
       fontWeight: 600,
       fontSize: "1.125rem",
       letterSpacing: "-0.02em",
-      color: "#1A1A1A",
+      color: "#111827",
     },
     body1: {
       fontSize: "0.875rem",
       lineHeight: 1.5,
+      color: "#374151",
     },
     body2: {
       fontSize: "0.8125rem",
-      lineHeight: 1.4,
+      lineHeight: 1.5,
       color: "#6B7280",
     },
     button: {
       textTransform: "none",
-      fontWeight: 500,
+      fontWeight: 600,
       fontSize: "0.875rem",
+      letterSpacing: "0.01em",
     },
   },
   shape: {
-    borderRadius: 8,
+    borderRadius: 12,
   },
   components: {
     MuiCard: {
       styleOverrides: {
         root: {
-          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
-          borderRadius: 12,
-          border: "1px solid #F3F4F6",
-          transition: "all 0.2s ease-in-out",
-          "&:hover": {
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
-            borderColor: "#E5E7EB",
-          },
+          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)",
+          borderRadius: 16,
+          border: "1px solid rgba(229, 231, 235, 0.5)", // Subtle border
+          backgroundImage: "none",
         },
       },
     },
     MuiCardContent: {
       styleOverrides: {
         root: {
-          padding: "20px",
+          padding: "24px",
           "&:last-child": {
-            paddingBottom: "20px",
+            paddingBottom: "24px",
           },
         },
       },
@@ -117,12 +121,16 @@ const theme = createTheme({
     MuiCardHeader: {
       styleOverrides: {
         root: {
-          padding: "20px 20px 0 20px",
+          padding: "24px 24px 0 24px",
         },
         title: {
           fontSize: "1.125rem",
           fontWeight: 600,
-          color: "#1A1A1A",
+          color: "#111827",
+        },
+        subheader: {
+          fontSize: "0.875rem",
+          marginTop: "4px",
         },
       },
     },
@@ -130,22 +138,22 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 8,
-          padding: "8px 16px",
-          fontWeight: 500,
+          padding: "8px 20px",
           boxShadow: "none",
-          textTransform: "none",
+          "&:hover": {
+            boxShadow: "none",
+          },
         },
         contained: {
-          boxShadow: "0 1px 2px rgba(0, 0, 0, 0.1)",
+          boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
           "&:hover": {
-            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.15)",
+            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
           },
         },
         outlined: {
-          borderColor: "#E5E7EB",
-          color: "#6B7280",
+          borderWidth: "1.5px",
           "&:hover": {
-            borderColor: "#D1D5DB",
+            borderWidth: "1.5px",
             backgroundColor: "#F9FAFB",
           },
         },
@@ -154,64 +162,31 @@ const theme = createTheme({
     MuiChip: {
       styleOverrides: {
         root: {
-          fontWeight: 500,
-          borderRadius: 6,
-          fontSize: "0.75rem",
-          height: 24,
-        },
-        outlined: {
-          borderColor: "#E5E7EB",
+          fontWeight: 600,
+          borderRadius: 8,
         },
       },
     },
     MuiTableCell: {
       styleOverrides: {
         root: {
-          padding: "12px 16px",
+          padding: "16px 24px",
           borderBottom: "1px solid #F3F4F6",
         },
         head: {
           fontWeight: 600,
           backgroundColor: "#F9FAFB",
+          color: "#4B5563",
           fontSize: "0.75rem",
           textTransform: "uppercase",
           letterSpacing: "0.05em",
-          color: "#6B7280",
         },
       },
     },
-    MuiLinearProgress: {
+    MuiPaper: {
       styleOverrides: {
         root: {
-          height: 6,
-          borderRadius: 3,
-          backgroundColor: "#F3F4F6",
-        },
-        bar: {
-          borderRadius: 3,
-        },
-      },
-    },
-    MuiAppBar: {
-      styleOverrides: {
-        root: {
-          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
-          borderBottom: "1px solid #F3F4F6",
-        },
-      },
-    },
-    MuiDrawer: {
-      styleOverrides: {
-        paper: {
-          borderRight: "1px solid #F3F4F6",
-          boxShadow: "none",
-        },
-      },
-    },
-    MuiDivider: {
-      styleOverrides: {
-        root: {
-          borderColor: "#F3F4F6",
+          backgroundImage: "none",
         },
       },
     },
@@ -220,7 +195,7 @@ const theme = createTheme({
 
 function Logout() {
   localStorage.clear()
-  return <Navigate to="/login"/>
+  return <Navigate to="/login" />
 }
 
 function RegisterAndLogout() {
@@ -237,8 +212,8 @@ function App() {
         <Layout>
           <Routes>
             <Route path="/" element={
-                <EnvironmentalDashboard />
-              } 
+              <EnvironmentalDashboard />
+            }
             />
             <Route path="/login" element={<Login />} />
             <Route path="/logout" element={<Logout />} />

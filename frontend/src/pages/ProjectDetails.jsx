@@ -27,6 +27,7 @@ import {
   IconButton,
   Checkbox,
   FormControlLabel,
+  useTheme,
 } from "@mui/material"
 import { BarChart } from "@mui/x-charts"
 import { DataGrid } from "@mui/x-data-grid"
@@ -39,6 +40,7 @@ import {
 import LCAProductSearch from "../components/LCAProductSearch"
 
 function ProjectDetails() {
+  const theme = useTheme()
   const { projectID } = useParams()
   const navigate = useNavigate()
 
@@ -814,7 +816,14 @@ function ProjectDetails() {
               <Chip
                 key={n}
                 label={`Scope ${n}`}
-                color={selectedScopes.includes(n) ? (n === 1 ? 'primary' : n === 2 ? 'success' : 'warning') : 'default'}
+                sx={{
+                  bgcolor: selectedScopes.includes(n) ? theme.palette.scopes[`scope${n}`] : 'transparent',
+                  color: selectedScopes.includes(n) ? 'white' : 'text.primary',
+                  borderColor: theme.palette.scopes[`scope${n}`],
+                  '&:hover': {
+                    bgcolor: selectedScopes.includes(n) ? theme.palette.scopes[`scope${n}`] : `${theme.palette.scopes[`scope${n}`]}22`,
+                  }
+                }}
                 variant={selectedScopes.includes(n) ? 'filled' : 'outlined'}
                 onClick={() => setSelectedScopes(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}
               />
@@ -827,13 +836,19 @@ function ProjectDetails() {
               const s = (project.scopes || []).find(sc => sc.scope_number === n)
               return Number(s?.total_emissions_tco2e || 0)
             })
-            const labels = [1, 2, 3].filter(n => selectedScopes.includes(n)).map(n => `Scope ${n}`)
-            const data = [1, 2, 3].filter(n => selectedScopes.includes(n)).map(n => totals[n - 1])
+
+            const allLabels = ['Scope 1', 'Scope 2', 'Scope 3'];
+            const allSeries = [
+              { label: 'Scope 1', data: [totals[0], 0, 0], color: theme.palette.scopes.scope1, stack: 'total', id: 1 },
+              { label: 'Scope 2', data: [0, totals[1], 0], color: theme.palette.scopes.scope2, stack: 'total', id: 2 },
+              { label: 'Scope 3', data: [0, 0, totals[2]], color: theme.palette.scopes.scope3, stack: 'total', id: 3 },
+            ].filter(s => selectedScopes.includes(s.id));
+
             return (
               <BarChart
                 height={280}
-                xAxis={[{ scaleType: 'band', data: labels }]}
-                series={[{ label: 'Emissions (tCO₂e)', data }]}
+                xAxis={[{ scaleType: 'band', data: allLabels }]}
+                series={allSeries}
                 grid={{ horizontal: true }}
                 margin={{ left: 60, right: 20, top: 10, bottom: 40 }}
               />
