@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 from .models import Project
 from .models import EmissionScope, EmissionFactor, EmissionActivity
-from .models import LCAProduct, LCAActivity
+from .models import LCAProduct, LCAActivity, ProductExchange
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -167,10 +167,26 @@ class EmissionActivityListSerializer(serializers.ModelSerializer):
         ]
 
 
+class ProductExchangeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductExchange
+        fields = [
+            "exchange_id", "product", "emission_factor", "input_product",
+            "name", "quantity", "unit", "calculated_impact"
+        ]
+        read_only_fields = ["exchange_id", "calculated_impact", "name", "unit"]
+
 class LCAProductSerializer(serializers.ModelSerializer):
+    exchanges = ProductExchangeSerializer(many=True, read_only=True)
+
     class Meta:
         model = LCAProduct
-        fields = ["lca_id", "name", "functional_unit", "total_carbon_footprint_per_unit"]
+        fields = [
+            "lca_id", "name", "description", "functional_unit", 
+            "total_carbon_footprint_per_unit", "exchanges", 
+            "created_date", "last_modified"
+        ]
+        read_only_fields = ["lca_id", "created_date", "last_modified", "total_carbon_footprint_per_unit"]
 
 
 class LCAActivitySerializer(serializers.ModelSerializer):

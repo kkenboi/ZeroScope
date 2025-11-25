@@ -355,12 +355,65 @@ class LCAProduct(models.Model):
     lca_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="lca_products")
     name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
     functional_unit = models.CharField(max_length=255)
     total_carbon_footprint_per_unit = models.DecimalField(max_digits=15, decimal_places=6, default=0)
     created_date = models.DateTimeField(auto_now_add=True)
+    last_modified = models.DateTimeField(auto_now=True)
     
+    def calculate_total_footprint(self):
+        """Sum of all exchanges"""
+        total = sum(ex.calculated_impact for ex in self.exchanges.all())
+        self.total_carbon_footprint_per_unit = total
+        self.save()
+        return total
+
     def __str__(self):
         return f"{self.name} ({self.project.name})"
+
+
+class ProductExchange(models.Model):
+    """
+    Represents an input (exchange) in a custom LCA product.
+    Can be an EmissionFactor or another LCAProduct.
+    """
+    exchange_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(LCAProduct, on_delete=models.CASCADE, related_name="exchanges")
+    
+    # Input source (mutually exclusive ideally, or prioritized)
+    emission_factor = models.ForeignKey(EmissionFactor, on_delete=models.SET_NULL, null=True, blank=True)
+    input_product = models.ForeignKey(LCAProduct, on_delete=models.SET_NULL, null=True, blank=True, related_name="used_in")
+    
+    name = models.CharField(max_length=255, help_text="Name of the input")
+    quantity = models.DecimalField(max_digits=15, decimal_places=6)
+    unit = models.CharField(max_length=50)
+    
+    # Result
+    calculated_impact = models.DecimalField(max_digits=15, decimal_places=6, default=0)
+    
+    def save(self, *args, **kwargs):
+        # Calculate impact before saving
+        if self.emission_factor:
+            # Factor is in kgCO2e/unit
+            factor = self.emission_factor.emission_factor_value
+            self.calculated_impact = self.quantity * factor
+            self.unit = self.emission_factor.unit # Enforce unit match? Or just assume user knows
+            self.name = self.emission_factor.name
+        elif self.input_product:
+            # Input product footprint is in kgCO2e (or whatever unit it is)
+            # Assuming input product total_carbon_footprint_per_unit is in kgCO2e
+            factor = self.input_product.total_carbon_footprint_per_unit
+            self.calculated_impact = self.quantity * factor
+            self.unit = self.input_product.functional_unit
+            self.name = self.input_product.name
+            
+        super().save(*args, **kwargs)
+        
+        # Update parent product
+        self.product.calculate_total_footprint()
+
+    def __str__(self):
+        return f"{self.name} -> {self.product.name}"
 
 
 class LCAActivity(models.Model):

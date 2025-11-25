@@ -7,11 +7,11 @@ from django.http import JsonResponse
 from django.contrib.auth.models import User
 from .serializer import UserSerializer, ProjectSerializer
 
-from .models import Project, EmissionScope, EmissionFactor, EmissionActivity, LCAProduct, LCAActivity
+from .models import Project, EmissionScope, EmissionFactor, EmissionActivity, LCAProduct, LCAActivity, ProductExchange
 from django.db.models import Q
 from .serializer import EmissionScopeSerializer, EmissionFactorSerializer, EmissionActivitySerializer
 from .serializer import CategoryInfoSerializer
-from .serializer import LCAProductSerializer, LCAActivitySerializer
+from .serializer import LCAProductSerializer, LCAActivitySerializer, ProductExchangeSerializer
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import action
@@ -267,6 +267,66 @@ class LCAProductViewSet(viewsets.ModelViewSet):
     queryset = LCAProduct.objects.all()
     serializer_class = LCAProductSerializer
     lookup_field = "lca_id"
+    permission_classes = [AllowAny]
+
+    @action(detail=True, methods=['post'])
+    def update_graph(self, request, lca_id=None):
+        """
+        Update the product graph (exchanges) from the editor.
+        Expects a list of exchanges in 'exchanges' key.
+        """
+        product = self.get_object()
+        exchanges_data = request.data.get('exchanges', [])
+        
+        try:
+            # 1. Update product details if provided
+            if 'name' in request.data:
+                product.name = request.data['name']
+            if 'description' in request.data:
+                product.description = request.data['description']
+            if 'functional_unit' in request.data:
+                product.functional_unit = request.data['functional_unit']
+            product.save()
+
+            # 2. Sync exchanges
+            # Strategy: Delete all existing and recreate. 
+            # (Simple but effective for this scale. Preserving IDs would be better for complex apps but maybe overkill here)
+            product.exchanges.all().delete()
+            
+            for ex_data in exchanges_data:
+                # Resolve relationships
+                emission_factor = None
+                input_product = None
+                
+                if ex_data.get('emission_factor_id'):
+                    emission_factor = EmissionFactor.objects.get(pk=ex_data['emission_factor_id'])
+                elif ex_data.get('input_product_id'):
+                    input_product = LCAProduct.objects.get(pk=ex_data['input_product_id'])
+                
+                ProductExchange.objects.create(
+                    product=product,
+                    emission_factor=emission_factor,
+                    input_product=input_product,
+                    name=ex_data.get('name', 'Unknown'),
+                    quantity=ex_data.get('quantity', 0),
+                    unit=ex_data.get('unit', '')
+                )
+            
+            # 3. Recalculate total
+            product.calculate_total_footprint()
+            
+            # Return updated product
+            serializer = self.get_serializer(product)
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ProductExchangeViewSet(viewsets.ModelViewSet):
+    queryset = ProductExchange.objects.all()
+    serializer_class = ProductExchangeSerializer
+    lookup_field = "exchange_id"
     permission_classes = [AllowAny]
 
 
@@ -774,6 +834,43 @@ class BW2AdminViewSet(viewsets.ViewSet):
             
             bw2Instance = BW2LCA()
             result = bw2Instance.delete_custom_product(database_name, activity_code)
+            
+            if result['success']:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['POST'])
+    def update_custom_product(self, request):
+        """
+        Update a custom product's exchanges
+        Expected body: { 
+            "database_name": "custom_products", 
+            "activity_code": "code",
+            "exchanges": [ ... ]
+        }
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            
+            database_name = request.data.get('database_name')
+            activity_code = request.data.get('activity_code')
+            exchanges = request.data.get('exchanges', [])
+            
+            if not database_name or not activity_code:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required fields: database_name, activity_code'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            bw2Instance = BW2LCA()
+            result = bw2Instance.update_custom_product_exchanges(database_name, activity_code, exchanges)
             
             if result['success']:
                 return Response(result, status=status.HTTP_200_OK)

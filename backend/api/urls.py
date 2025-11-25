@@ -3,7 +3,7 @@ from rest_framework import routers
 from .views import (
     ProjectViewSet, EmissionScopeViewSet, EmissionFactorViewSet, EmissionActivityViewSet, 
     LCAProductViewSet, LCAActivityViewSet, BW2AdminViewSet, UncertaintyAnalysisViewSet,
-    SensitivityAnalysisViewSet, get_settings, calculate_lca
+    SensitivityAnalysisViewSet, get_settings, calculate_lca, ProductExchangeViewSet
 )
 from .views_dashboard import dashboard_stats
 from .views_reports import generate_report
@@ -15,6 +15,7 @@ router.register(r'emission-factors', EmissionFactorViewSet)
 router.register(r'emission-activities', EmissionActivityViewSet)
 router.register(r'activities', EmissionActivityViewSet, basename='activities')  # Alias for emission-activities
 router.register(r'lca-products', LCAProductViewSet)
+router.register(r'product-exchanges', ProductExchangeViewSet)
 router.register(r'lca-activities', LCAActivityViewSet)
 router.register(r'brightway2', BW2AdminViewSet, basename='brightway2')
 router.register(r'uncertainty', UncertaintyAnalysisViewSet, basename='uncertainty')

@@ -43,8 +43,11 @@ import {
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
   Info as InfoIcon,
-  Clear as ClearIcon
+  Clear as ClearIcon,
+  Edit as EditIcon,
+  AccountTree as GraphIcon
 } from "@mui/icons-material";
+import CustomProductEditorWrapper from "./CustomProductEditor";
 
 function TabPanel({ children, value, index }) {
   return (
@@ -56,14 +59,14 @@ function TabPanel({ children, value, index }) {
 
 function CustomProductCreator() {
   const [tabValue, setTabValue] = useState(0);
-  
+
   // Product Creation State
   const [productName, setProductName] = useState("");
   const [productLocation, setProductLocation] = useState("GLO");
   const [productUnit, setProductUnit] = useState("kilogram");
   const [productDatabase, setProductDatabase] = useState("custom_products");
   const [productDescription, setProductDescription] = useState("");
-  
+
   // Inputs State
   const [inputs, setInputs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,12 +74,12 @@ function CustomProductCreator() {
   const [searching, setSearching] = useState(false);
   const [selectedInput, setSelectedInput] = useState(null);
   const [inputAmount, setInputAmount] = useState(1.0);
-  
+
   // Outputs State
   const [outputs, setOutputs] = useState([]);
   const [outputName, setOutputName] = useState("");
   const [outputAmount, setOutputAmount] = useState(1.0);
-  
+
   // Custom Products List State
   const [customProducts, setCustomProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -84,7 +87,10 @@ function CustomProductCreator() {
   const [productDetailsDialog, setProductDetailsDialog] = useState(false);
   const [productDetails, setProductDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  
+
+  // Editor State
+  const [editingProduct, setEditingProduct] = useState(null);
+
   // Status State
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -131,21 +137,21 @@ function CustomProductCreator() {
 
     setSearching(true);
     setErrorMessage("");
-    
+
     try {
       const response = await fetch(
         `/api/brightway2/search_activities_for_inputs/?search_term=${encodeURIComponent(searchTerm)}&limit=50`
       );
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error("Server returned non-JSON response");
       }
-      
+
       const data = await response.json();
 
       if (data.success) {
@@ -279,7 +285,7 @@ function CustomProductCreator() {
         setStatusMessage(
           `Successfully created product: ${data.product.name} in database ${data.product.database}!`
         );
-        
+
         // Reset form
         setProductName("");
         setProductLocation("GLO");
@@ -287,7 +293,7 @@ function CustomProductCreator() {
         setProductDescription("");
         setInputs([]);
         setOutputs([]);
-        
+
         // Load products if on that tab
         if (tabValue === 1) {
           loadCustomProducts();
@@ -305,19 +311,19 @@ function CustomProductCreator() {
   const loadCustomProducts = async () => {
     setLoadingProducts(true);
     setErrorMessage("");
-    
+
     try {
       const response = await fetch("/api/brightway2/list_databases/");
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error("Server returned non-JSON response");
       }
-      
+
       const data = await response.json();
 
       if (data.success) {
@@ -325,7 +331,7 @@ function CustomProductCreator() {
         const customDbs = data.databases.filter(
           db => !db.name.startsWith('ecoinvent') && !db.name.startsWith('biosphere')
         );
-        
+
         // Load activities from each custom database
         const allProducts = [];
         for (const db of customDbs) {
@@ -333,20 +339,20 @@ function CustomProductCreator() {
             const actResponse = await fetch(
               `/api/brightway2/get_activities/?database_name=${encodeURIComponent(db.name)}&limit=1000`
             );
-            
+
             if (!actResponse.ok) {
               console.warn(`Failed to load activities from ${db.name}`);
               continue;
             }
-            
+
             const actContentType = actResponse.headers.get("content-type");
             if (!actContentType || !actContentType.includes("application/json")) {
               console.warn(`Non-JSON response for ${db.name}`);
               continue;
             }
-            
+
             const actData = await actResponse.json();
-            
+
             if (actData.success && actData.activities) {
               allProducts.push(...actData.activities.map(act => ({
                 ...act,
@@ -358,7 +364,7 @@ function CustomProductCreator() {
             continue;
           }
         }
-        
+
         setCustomProducts(allProducts);
       } else {
         setErrorMessage(data.error || "Failed to load databases");
@@ -382,16 +388,16 @@ function CustomProductCreator() {
           product.database
         )}&activity_code=${encodeURIComponent(product.code)}`
       );
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error("Server returned non-JSON response");
       }
-      
+
       const data = await response.json();
 
       if (data.success) {
@@ -414,7 +420,7 @@ function CustomProductCreator() {
     }
 
     setErrorMessage("");
-    
+
     try {
       const response = await fetch("/api/brightway2/delete_custom_product/", {
         method: "DELETE",
@@ -426,11 +432,11 @@ function CustomProductCreator() {
           activity_code: product.code,
         }),
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error("Server returned non-JSON response");
@@ -448,6 +454,38 @@ function CustomProductCreator() {
       setErrorMessage(`Error deleting product: ${error.message}`);
     }
   };
+
+  const handleEditGraph = (product) => {
+    setEditingProduct(product);
+  };
+
+  const handleCloseEditor = () => {
+    setEditingProduct(null);
+    loadCustomProducts(); // Refresh to show updated impact if calculated
+  };
+
+  if (editingProduct) {
+    return (
+      <Box sx={{ width: "100%", height: "80vh" }}>
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button startIcon={<ClearIcon />} onClick={() => setEditingProduct(null)}>
+            Back to List
+          </Button>
+          <Typography variant="h6">
+            Editing: {editingProduct.name}
+          </Typography>
+        </Box>
+        <CustomProductEditorWrapper
+          activity={editingProduct}
+          onClose={handleCloseEditor}
+          onSaveSuccess={() => {
+            setStatusMessage("Product graph updated successfully!");
+            handleCloseEditor();
+          }}
+        />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ width: "100%" }}>
@@ -771,6 +809,15 @@ function CustomProductCreator() {
                           <Chip label={product.num_exchanges} size="small" />
                         </TableCell>
                         <TableCell align="right">
+                          <Button
+                            size="small"
+                            startIcon={<GraphIcon />}
+                            onClick={() => handleEditGraph(product)}
+                            sx={{ mr: 1 }}
+                            color="secondary"
+                          >
+                            Edit Graph
+                          </Button>
                           <Button
                             size="small"
                             startIcon={<InfoIcon />}

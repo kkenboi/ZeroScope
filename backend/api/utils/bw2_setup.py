@@ -721,3 +721,99 @@ class BW2LCA:
                 'error': f"{type(e).__name__}: {str(e)}",
                 'traceback': traceback.format_exc()
             }
+
+    def update_custom_product_exchanges(self, db_name, activity_code, exchanges):
+        """
+        Update the exchanges (inputs) for a custom product.
+        This replaces all existing input exchanges with the new list.
+        
+        Args:
+            db_name: database name
+            activity_code: activity code
+            exchanges: list of dicts with:
+                - input_database: database of the input activity
+                - input_code: code of the input activity
+                - amount: amount of input
+                - type: exchange type (default 'technosphere')
+                - unit: unit (optional)
+        """
+        bd.projects.set_current(self.PROJECT_NAME)
+        try:
+            if db_name not in bd.databases:
+                return {
+                    'success': False,
+                    'error': f'Database {db_name} does not exist'
+                }
+            
+            db = bd.Database(db_name)
+            activity = db.get(activity_code)
+            
+            if not activity:
+                return {
+                    'success': False,
+                    'error': f'Activity {activity_code} not found'
+                }
+            
+            # 1. Identify production exchanges to keep
+            # We only want to replace inputs (technosphere/biosphere), not the production output itself
+            production_exchanges = [exc for exc in activity.exchanges() if exc['type'] == 'production']
+            
+            # 2. Delete all exchanges
+            # It's safer to delete all and re-add production + new inputs
+            for exc in activity.exchanges():
+                exc.delete()
+                
+            # 3. Restore production exchanges
+            for prod_exc in production_exchanges:
+                activity.new_exchange(
+                    input=prod_exc.input.key,
+                    amount=prod_exc['amount'],
+                    type='production',
+                    unit=prod_exc.get('unit', activity.get('unit', 'Unknown'))
+                ).save()
+                
+            # 4. Add new input exchanges
+            for exc_data in exchanges:
+                input_db = exc_data.get('input_database')
+                input_code = exc_data.get('input_code')
+                amount = float(exc_data.get('amount', 0))
+                exc_type = exc_data.get('type', 'technosphere')
+                
+                if not input_db or not input_code:
+                    continue
+                    
+                # Verify input exists
+                if input_db not in bd.databases:
+                    continue
+                    
+                inp_db_obj = bd.Database(input_db)
+                try:
+                    input_activity = inp_db_obj.get(input_code)
+                except:
+                    continue
+                    
+                if not input_activity:
+                    continue
+                
+                activity.new_exchange(
+                    input=input_activity.key,
+                    amount=amount,
+                    type=exc_type,
+                    unit=input_activity.get('unit', 'Unknown')
+                ).save()
+            
+            # 5. Recalculate impact (optional, but good for verification)
+            # We'll just return success and let the frontend trigger a calc if needed
+            
+            return {
+                'success': True,
+                'message': 'Successfully updated product exchanges',
+                'num_exchanges': len(list(activity.exchanges()))
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }
