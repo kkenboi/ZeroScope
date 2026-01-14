@@ -11,6 +11,7 @@ import ReactFlow, {
     Panel
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import dagre from 'dagre';
 import {
     Box,
     Paper,
@@ -20,48 +21,120 @@ import {
     ListItemText,
     TextField,
     Button,
-    Divider,
-    IconButton,
     Card,
     CardContent,
     CircularProgress,
-    Alert
+    Alert,
+    IconButton,
+    Tooltip
 } from '@mui/material';
 import {
     Save as SaveIcon,
     Delete as DeleteIcon,
     Science as ScienceIcon,
     Calculate as CalculateIcon,
-    Search as SearchIcon
+    Search as SearchIcon,
+    AccountTree as GraphIcon,
+    PlaylistAdd as ExpandIcon,
+    Close as CloseIcon
 } from '@mui/icons-material';
+
+// --- Layout Helper ---
+
+const getLayoutedElements = (nodes, edges, direction = 'LR') => {
+    const dagreGraph = new dagre.graphlib.Graph();
+    dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+    // Layout configuration
+    // rankdir: 'LR' means Left-to-Right.
+    // Sources (Inputs) will be on the Left. Targets (Products) will be on the Right.
+    // This creates a natural supply chain flow -> [Input] -> [Product].
+    dagreGraph.setGraph({
+        rankdir: direction,
+        nodesep: 80,  // Vertical spacing between sibling nodes
+        ranksep: 200, // Horizontal spacing between layers (generations)
+        align: 'UR'   // Alignment heuristic
+    });
+
+    nodes.forEach((node) => {
+        // Dimensions for compact nodes (match CSS width/height approximately)
+        dagreGraph.setNode(node.id, { width: 240, height: 160 });
+    });
+
+    edges.forEach((edge) => {
+        dagreGraph.setEdge(edge.source, edge.target);
+    });
+
+    dagre.layout(dagreGraph);
+
+    const layoutedNodes = nodes.map((node) => {
+        const nodeWithPosition = dagreGraph.node(node.id);
+
+        // Dagre provides center coordinates, ReactFlow needs top-left
+        if (nodeWithPosition) {
+            node.position = {
+                x: nodeWithPosition.x - 120,
+                y: nodeWithPosition.y - 80,
+            };
+        }
+
+        // Force handle positions for Left-to-Right flow
+        node.targetPosition = Position.Left;
+        node.sourcePosition = Position.Right;
+
+        return node;
+    });
+
+    return { nodes: layoutedNodes, edges };
+};
 
 // --- Custom Nodes ---
 
 // 1. Product Node (The main output)
 const ProductNode = ({ data }) => {
     return (
-        <Card sx={{ minWidth: 200, border: '2px solid #2E7D32', bgcolor: '#E8F5E9' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                <Handle type="target" position={Position.Left} />
-                <Typography variant="subtitle2" color="success.main" fontWeight="bold">
-                    MAIN PRODUCT
+        <Card sx={{
+            width: 200,
+            border: '2px solid #2E7D32',
+            bgcolor: '#E8F5E9',
+            boxShadow: 3
+        }}>
+            <CardContent sx={{ p: '12px !important' }}>
+                <Handle type="target" position={Position.Left} style={{ background: '#2E7D32' }} />
+
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Box sx={{
+                        bgcolor: 'success.main',
+                        color: 'white',
+                        borderRadius: '4px',
+                        px: 0.5,
+                        fontSize: '0.65rem',
+                        fontWeight: 'bold',
+                        mr: 1
+                    }}>
+                        PRODUCT
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                        {data.location}
+                    </Typography>
+                </Box>
+
+                <Typography variant="subtitle2" fontWeight="bold" sx={{ lineHeight: 1.2, mb: 1 }}>
+                    {data.label}
                 </Typography>
-                <Typography variant="h6">{data.label}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                    {data.location} | {data.unit}
-                </Typography>
-                <Divider sx={{ my: 1 }} />
-                <Typography variant="caption" display="block">
-                    Database: {data.database}
+
+                <Typography variant="caption" display="block" color="text.secondary">
+                    {data.unit} | {data.database}
                 </Typography>
             </CardContent>
         </Card>
     );
 };
 
-// 2. Input Node (Activity Input)
+// 2. Input Node (Compact)
 const InputNode = ({ data, id }) => {
     const { setNodes } = useReactFlow();
+    const [expanding, setExpanding] = useState(false);
 
     const handleDelete = () => {
         setNodes((nodes) => nodes.filter((n) => n.id !== id));
@@ -72,43 +145,102 @@ const InputNode = ({ data, id }) => {
         data.onChange(id, qty);
     };
 
+    const onExpandClick = async (e) => {
+        e.stopPropagation();
+        if (data.onExpand && !expanding) {
+            setExpanding(true);
+            await data.onExpand(id, data);
+            setExpanding(false);
+        }
+    };
+
+    const isTechnosphere = data.type === 'technosphere';
+
     return (
-        <Card sx={{ minWidth: 240, border: '1px solid #ddd' }}>
-            <Box sx={{ p: 1, bgcolor: '#f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {data.type === 'biosphere' ? <CalculateIcon fontSize="small" color="success" /> : <ScienceIcon fontSize="small" color="primary" />}
-                    <Typography variant="caption" fontWeight="bold">
-                        {data.type === 'biosphere' ? 'BIOSPHERE' : 'TECHNOSPHERE'}
+        <Card sx={{
+            width: 220,
+            border: '1px solid',
+            borderColor: data.expanded ? 'primary.main' : '#e0e0e0',
+            boxShadow: 1,
+            transition: 'all 0.2s',
+            '&:hover': { boxShadow: 3 }
+        }}>
+            {/* Header Strip */}
+            <Box sx={{
+                px: 1.5,
+                py: 0.5,
+                bgcolor: '#f5f5f5',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                borderBottom: '1px solid #f0f0f0'
+            }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {data.type === 'biosphere' ?
+                        <CalculateIcon sx={{ fontSize: 16, color: 'success.main' }} /> :
+                        <ScienceIcon sx={{ fontSize: 16, color: 'primary.main' }} />
+                    }
+                    <Typography variant="caption" fontWeight="bold" sx={{ fontSize: '0.7rem' }}>
+                        {data.type === 'biosphere' ? 'BIO' : 'TECH'}
                     </Typography>
                 </Box>
-                <IconButton size="small" onClick={handleDelete} color="error">
-                    <DeleteIcon fontSize="small" />
-                </IconButton>
+                <Box>
+                    {isTechnosphere && (
+                        <Tooltip title="Expand Inputs">
+                            <IconButton
+                                size="small"
+                                onClick={onExpandClick}
+                                disabled={expanding || data.expanded}
+                                color="primary"
+                                sx={{ p: 0.5 }}
+                            >
+                                {expanding ? <CircularProgress size={14} /> : <GraphIcon sx={{ fontSize: 16 }} />}
+                            </IconButton>
+                        </Tooltip>
+                    )}
+                    <IconButton size="small" onClick={handleDelete} color="error" sx={{ p: 0.5 }}>
+                        <CloseIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                </Box>
             </Box>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                <Typography variant="body2" fontWeight="bold" gutterBottom noWrap title={data.label}>
+
+            <CardContent sx={{ p: '10px !important' }}>
+                <Typography
+                    variant="body2"
+                    fontWeight="500"
+                    noWrap
+                    title={data.label}
+                    sx={{ mb: 1 }}
+                >
                     {data.label}
                 </Typography>
-                <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
-                    {data.location} | {data.database}
-                </Typography>
 
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                     <TextField
-                        label="Amount"
                         size="small"
                         type="number"
                         value={data.quantity}
                         onChange={handleQuantityChange}
-                        sx={{ width: 100 }}
+                        sx={{
+                            width: 80,
+                            '& .MuiInputBase-input': {
+                                p: 0.5,
+                                fontSize: '0.85rem'
+                            }
+                        }}
                         InputProps={{ inputProps: { step: "any" } }}
                     />
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 80 }}>
                         {data.unit}
                     </Typography>
                 </Box>
 
-                <Handle type="source" position={Position.Right} />
+                <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontSize: '0.7rem' }} noWrap>
+                    {data.location} | {data.database}
+                </Typography>
+
+                <Handle type="source" position={Position.Right} style={{ background: '#555' }} />
+                <Handle type="target" position={Position.Left} style={{ background: '#555' }} />
             </CardContent>
         </Card>
     );
@@ -125,6 +257,7 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
     const reactFlowWrapper = useRef(null);
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+    const { fitView, getNodes, getEdges } = useReactFlow();
 
     // Sidebar state
     const [searchResults, setSearchResults] = useState([]);
@@ -143,23 +276,118 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
         }
     }, [activity]);
 
+    // Helper to apply layout to current nodes/edges
+    const refreshLayout = useCallback((currentNodes, currentEdges) => {
+        const layouted = getLayoutedElements(currentNodes, currentEdges, 'LR');
+        setNodes([...layouted.nodes]);
+        setEdges([...layouted.edges]);
+
+        // Fit view to ensure new nodes (on the left) are visible
+        window.requestAnimationFrame(() => {
+            fitView({ padding: 0.2, duration: 800 });
+        });
+    }, [setNodes, setEdges, fitView]);
+
+
+    const handleNodeExpand = useCallback(async (parentId, parentData) => {
+        try {
+            // Fetch inputs for this activity
+            const response = await fetch(
+                `/api/brightway2/get_exchanges/?database_name=${encodeURIComponent(parentData.input_database)}&activity_code=${encodeURIComponent(parentData.input_code)}`
+            );
+            const data = await response.json();
+
+            if (data.success && data.exchanges && data.exchanges.length > 0) {
+                const inputs = data.exchanges.filter(ex => ex.type !== 'production');
+                const currentNodes = getNodes();
+                const currentEdges = getEdges();
+
+                if (inputs.length === 0) {
+                    alert("This activity has no upstream inputs.");
+                    return;
+                }
+
+                const newNodes = [];
+                const newEdges = [];
+
+                inputs.forEach((ex, index) => {
+                    const nodeId = `node-exp-${parentId}-${index}-${Date.now()}`;
+                    newNodes.push({
+                        id: nodeId,
+                        type: 'inputNode',
+                        position: { x: 0, y: 0 }, // Position will be handled by layout
+                        data: {
+                            label: ex.input,
+                            type: ex.type,
+                            quantity: ex.amount,
+                            unit: ex.unit,
+                            input_database: ex.input_database,
+                            input_code: ex.input_code,
+                            location: 'Unknown',
+                            database: ex.input_database,
+                            onChange: handleNodeQuantityChange,
+                            onExpand: handleNodeExpand,
+                            expanded: false
+                        }
+                    });
+
+                    newEdges.push({
+                        id: `edge-${parentId}-${nodeId}`,
+                        source: nodeId,
+                        target: parentId,
+                        animated: true,
+                        style: { stroke: '#888' }
+                    });
+                });
+
+                // Current Nodes + New Nodes (Mark parent expanded)
+                const updatedNodes = currentNodes.map(n => n.id === parentId ? { ...n, data: { ...n.data, expanded: true } } : n).concat(newNodes);
+                const updatedEdges = currentEdges.concat(newEdges);
+
+                // Apply Layout
+                refreshLayout(updatedNodes, updatedEdges);
+
+            } else {
+                alert("Could not load inputs for this activity.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error expanding node.");
+        }
+    }, [getNodes, getEdges, refreshLayout]);
+
+    const handleNodeQuantityChange = useCallback((id, qty) => {
+        setNodes((nds) =>
+            nds.map((node) => {
+                if (node.id === id) {
+                    return {
+                        ...node,
+                        data: { ...node.data, quantity: qty },
+                    };
+                }
+                return node;
+            })
+        );
+    }, [setNodes]);
+
     const loadGraph = async (act) => {
         setLoading(true);
         try {
             // 1. Create Main Node
-            const initialNodes = [
-                {
-                    id: 'main-product',
-                    type: 'productNode',
-                    position: { x: 600, y: 300 },
-                    data: {
-                        label: act.name,
-                        unit: act.unit,
-                        location: act.location,
-                        database: act.database
-                    },
+            const mainNode = {
+                id: 'main-product',
+                type: 'productNode',
+                position: { x: 0, y: 0 },
+                data: {
+                    label: act.name,
+                    unit: act.unit,
+                    location: act.location,
+                    database: act.database
                 },
-            ];
+            };
+
+            const initialNodes = [mainNode];
+            const initialEdges = [];
 
             // 2. Fetch Exchanges
             const response = await fetch(
@@ -168,9 +396,6 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
             const data = await response.json();
 
             if (data.success) {
-                const initialEdges = [];
-                let yOffset = 50;
-
                 // Filter out production exchanges (outputs)
                 const inputs = data.exchanges.filter(ex => ex.type !== 'production');
 
@@ -179,17 +404,19 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
                     initialNodes.push({
                         id: nodeId,
                         type: 'inputNode',
-                        position: { x: 200, y: yOffset },
+                        position: { x: 0, y: 0 },
                         data: {
-                            label: ex.input, // Input name
+                            label: ex.input,
                             type: ex.type,
                             quantity: ex.amount,
                             unit: ex.unit,
                             input_database: ex.input_database,
                             input_code: ex.input_code,
-                            location: 'Unknown', // We might not have this from get_exchanges
+                            location: 'Unknown',
                             database: ex.input_database,
-                            onChange: handleNodeQuantityChange
+                            onChange: handleNodeQuantityChange,
+                            onExpand: handleNodeExpand,
+                            expanded: false
                         }
                     });
 
@@ -199,12 +426,10 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
                         target: 'main-product',
                         animated: true,
                     });
-
-                    yOffset += 180;
                 });
 
-                setNodes(initialNodes);
-                setEdges(initialEdges);
+                // Apply initial layout
+                refreshLayout(initialNodes, initialEdges);
             }
         } catch (err) {
             setError("Failed to load product graph");
@@ -234,20 +459,6 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
         }
     };
 
-    const handleNodeQuantityChange = useCallback((id, qty) => {
-        setNodes((nds) =>
-            nds.map((node) => {
-                if (node.id === id) {
-                    return {
-                        ...node,
-                        data: { ...node.data, quantity: qty },
-                    };
-                }
-                return node;
-            })
-        );
-    }, [setNodes]);
-
     const onDragStart = (event, nodeType, itemData) => {
         event.dataTransfer.setData('application/reactflow', nodeType);
         event.dataTransfer.setData('application/itemData', JSON.stringify(itemData));
@@ -267,6 +478,10 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
             }
 
             const itemData = JSON.parse(itemDataString);
+
+            // Allow drag anywhere currently, but ideally we should re-layout
+            // For now, let's just add it where dropped, but standard layout might overwrite this if refreshed
+
             const position = {
                 x: event.clientX - reactFlowBounds.left,
                 y: event.clientY - reactFlowBounds.top,
@@ -278,29 +493,33 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
                 position,
                 data: {
                     label: itemData.name,
-                    type: 'technosphere', // Default to technosphere for dragged items
+                    type: 'technosphere',
                     quantity: 1,
                     unit: itemData.unit,
                     input_database: itemData.database,
                     input_code: itemData.code,
                     location: itemData.location,
                     database: itemData.database,
-                    onChange: handleNodeQuantityChange
+                    onChange: handleNodeQuantityChange,
+                    onExpand: handleNodeExpand,
+                    expanded: false
                 },
             };
 
-            setNodes((nds) => nds.concat(newNode));
-
-            // Auto connect to main product
             const newEdge = {
                 id: `edge-${Date.now()}`,
                 source: newNode.id,
                 target: 'main-product',
                 animated: true,
             };
-            setEdges((eds) => eds.concat(newEdge));
+
+            const updatedNodes = nodes.concat(newNode);
+            const updatedEdges = edges.concat(newEdge);
+
+            // Re-run layout to keeping things organized
+            refreshLayout(updatedNodes, updatedEdges);
         },
-        [setNodes, setEdges, handleNodeQuantityChange]
+        [nodes, edges, handleNodeQuantityChange, handleNodeExpand, refreshLayout]
     );
 
     const onDragOver = useCallback((event) => {
@@ -313,8 +532,11 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
         setError("");
 
         try {
+            const mainEdges = edges.filter(e => e.target === 'main-product');
+            const mainInputIds = mainEdges.map(e => e.source);
+
             const exchanges = nodes
-                .filter(n => n.type === 'inputNode')
+                .filter(n => mainInputIds.includes(n.id) && n.type === 'inputNode')
                 .map(n => ({
                     input_database: n.data.input_database,
                     input_code: n.data.input_code,

@@ -45,7 +45,8 @@ import {
   Info as InfoIcon,
   Clear as ClearIcon,
   Edit as EditIcon,
-  AccountTree as GraphIcon
+  AccountTree as GraphIcon,
+  AutoAwesome as AutoAwesomeIcon
 } from "@mui/icons-material";
 import CustomProductEditorWrapper from "./CustomProductEditor";
 
@@ -123,11 +124,88 @@ function CustomProductCreator() {
     "RoW"
   ];
 
+  // AI State
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
   useEffect(() => {
     if (tabValue === 1) {
       loadCustomProducts();
     }
   }, [tabValue]);
+
+  const handleAIGenerate = async () => {
+    if (!aiPrompt) {
+      setErrorMessage("Please enter a product description");
+      return;
+    }
+
+    setIsGenerating(true);
+    setErrorMessage("");
+    setStatusMessage("AI is analyzing your request...");
+
+    try {
+      const response = await fetch("/api/brightway2/suggest_product/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ description: aiPrompt }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setProductName(data.product_name || "");
+        setProductLocation(data.location || "GLO");
+        setProductUnit(data.unit || "kilogram");
+        setProductDescription(data.description || "");
+
+        // Process suggested inputs
+        // Process suggested inputs
+        if (data.suggested_inputs && data.suggested_inputs.length > 0) {
+          const matchedInputs = [];
+          const missingNames = [];
+
+          data.suggested_inputs.forEach(item => {
+            // Find the best match (first one)
+            const bestMatch = item.matches && item.matches.length > 0 ? item.matches[0] : null;
+
+            if (bestMatch) {
+              matchedInputs.push({
+                ...bestMatch,
+                amount: item.amount,
+                type: "technosphere", // Assume technosphere for inputs
+                comment: item.comment // Store AI comment if possible, otherwise just ignore
+              });
+            } else {
+              missingNames.push(item.name);
+            }
+          });
+
+          setInputs(matchedInputs);
+
+          if (missingNames.length > 0) {
+            setStatusMessage(`AI generation complete! The following inputs could not be matched automatically: "${missingNames.join('", "')}". Please search and add them manually.`);
+          } else {
+            setStatusMessage("AI generation complete! Product details and inputs populated.");
+          }
+        } else {
+          setStatusMessage("AI generation complete! Product details populated.");
+        }
+      } else {
+        if (response.status === 429) {
+          setErrorMessage("Too many requests. Please wait a moment and try again.");
+        } else {
+          setErrorMessage(data.error || "AI generation failed");
+        }
+      }
+    } catch (error) {
+      setErrorMessage(`AI generation error: ${error.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const searchActivities = async () => {
     if (!searchTerm || searchTerm.length < 3) {
@@ -510,6 +588,44 @@ function CustomProductCreator() {
 
       {/* Tab 1: Create Product */}
       <TabPanel value={tabValue} index={0}>
+        {/* AI Assistant Section */}
+        <Card sx={{ mb: 3, background: "linear-gradient(45deg, #f3f4f6 30%, #e8f5e9 90%)" }}>
+          <CardContent>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+              <AutoAwesomeIcon color="primary" />
+              <Typography variant="h6">
+                AI Product Assistant
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Describe your product in natural language, and our AI will suggest the product name, location, and relevant inputs from the database.
+            </Typography>
+
+            <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start", mt: 2 }}>
+              <TextField
+                label="Describe your product"
+                placeholder="e.g., 1kg of cotton t-shirt produced in China with shipping to Singapore"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                fullWidth
+                multiline
+                rows={2}
+                disabled={isGenerating}
+                sx={{ bgcolor: "white" }}
+              />
+              <Button
+                variant="contained"
+                onClick={handleAIGenerate}
+                disabled={isGenerating || !aiPrompt}
+                startIcon={isGenerating ? <CircularProgress size={20} color="inherit" /> : <AutoAwesomeIcon />}
+                sx={{ height: 56, minWidth: 160 }}
+              >
+                {isGenerating ? "Analyzing..." : "Generate"}
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+
         <Grid container spacing={3}>
           {/* Left Column: Product Details */}
           <Grid item xs={12} md={6}>

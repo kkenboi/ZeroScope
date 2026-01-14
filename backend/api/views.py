@@ -12,6 +12,9 @@ from django.db.models import Q
 from .serializer import EmissionScopeSerializer, EmissionFactorSerializer, EmissionActivitySerializer
 from .serializer import CategoryInfoSerializer
 from .serializer import LCAProductSerializer, LCAActivitySerializer, ProductExchangeSerializer
+from google import genai
+import json
+import os
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import action
@@ -518,6 +521,122 @@ class BW2AdminViewSet(viewsets.ViewSet):
                 'success': True,
                 'databases': databases
             }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['POST'])
+    def suggest_product(self, request):
+        """
+        Suggest a product structure using Gemini AI
+        Expected body: {
+            "description": "1kg of cotton t-shirt produced in China"
+        }
+        """
+        try:
+            description = request.data.get('description')
+            if not description:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required field: description'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                return Response({
+                    'success': False,
+                    'error': 'GEMINI_API_KEY not found in environment variables'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Configure Gemini
+            client = genai.Client(api_key=api_key)
+
+            # Construct prompt
+            prompt = f"""
+            You are an expert in Life Cycle Assessment (LCA) and industrial production.
+            Analyze the following product description and break it down into a list of constituent inputs (materials, energy, transport) required to produce it.
+            
+            Product Description: "{description}"
+            
+            Return ONLY a JSON object with the following structure:
+            {{
+                "product_name": "Short descriptive name",
+                "location": "ISO 2-letter country code (e.g., CN, US, DE) or GLO",
+                "unit": "kilogram",
+                "description": "Brief technical description",
+                "components": [
+                    {{
+                        "name": "Name of the component/process",
+                        "search_terms": "Keywords to search in ecoinvent (e.g., 'cotton fibre production', 'electricity medium voltage')",
+                        "amount": 1.0,
+                        "unit": "kilogram/kilowatt hour/ton/etc",
+                        "comment": "Why this is needed"
+                    }}
+                ]
+            }}
+            Do not include any markdown formatting (like ```json), just the raw JSON string.
+            """
+
+            try:
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt
+                )
+                response_text = response.text.replace('```json', '').replace('```', '').strip()
+                ai_data = json.loads(response_text)
+            except Exception as e:
+                # Check for 429 specifically if possible
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    return Response({
+                        'success': False,
+                        'error': 'AI Service Busy (Rate Limit Exceeded). Please try again in a moment.'
+                    }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+                return Response({
+                    'success': False,
+                    'error': f'AI Generation failed: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Search for activities in Brightway
+            from .utils.bw2_setup import BW2LCA
+            bw2Instance = BW2LCA()
+            
+            suggested_inputs = []
+            
+            for component in ai_data.get('components', []):
+                # 1. Try with generated search terms
+                search_term = component.get('search_terms', component.get('name'))
+                search_result = bw2Instance.search_activities_for_inputs(search_term, limit=5)
+                
+                matches = []
+                if search_result['success']:
+                    matches = search_result.get('activities', [])
+                
+                # 2. Fallback: If no matches, try searching with just the component name
+                if not matches and component.get('name') != search_term:
+                    fallback_term = component.get('name')
+                    fallback_result = bw2Instance.search_activities_for_inputs(fallback_term, limit=5)
+                    if fallback_result['success']:
+                        matches = fallback_result.get('activities', [])
+                
+                suggested_inputs.append({
+                    'name': component['name'],
+                    'amount': component['amount'],
+                    'unit': component['unit'],
+                    'comment': component.get('comment', ''),
+                    'matches': matches
+                })
+
+            return Response({
+                'success': True,
+                'product_name': ai_data.get('product_name'),
+                'location': ai_data.get('location', 'GLO'),
+                'unit': ai_data.get('unit', 'kilogram'),
+                'description': ai_data.get('description', ''),
+                'suggested_inputs': suggested_inputs
+            }, status=status.HTTP_200_OK)
+
         except Exception as e:
             return Response({
                 'success': False,

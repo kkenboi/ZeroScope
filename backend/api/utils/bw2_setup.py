@@ -324,26 +324,31 @@ class BW2LCA:
             for db_name in bd.databases:
                 try:
                     db = bd.Database(db_name)
-                    for act in db:
+                    # Use Brightway's native search (Whoosh index)
+                    # It returns a list of Activity objects
+                    search_results = db.search(search_term, limit=limit)
+                    
+                    for act in search_results:
                         try:
-                            if search_lower in act['name'].lower():
-                                results.append({
-                                    'code': act['code'],
-                                    'name': act['name'],
-                                    'location': act.get('location', 'Unknown'),
-                                    'unit': act.get('unit', 'Unknown'),
-                                    'database': act['database']
-                                })
-                                
-                                if len(results) >= limit:
-                                    break
+                            results.append({
+                                'code': act['code'],
+                                'name': act['name'],
+                                'location': act.get('location', 'Unknown'),
+                                'unit': act.get('unit', 'Unknown'),
+                                'database': act['database']
+                            })
+                            
+                            if len(results) >= limit:
+                                break
                         except Exception:
-                            # Skip activities that cause errors
                             continue
+                            
                     if len(results) >= limit:
                         break
-                except Exception:
-                    # Skip databases that cause errors
+                        
+                except Exception as e:
+                    # Fallback or skip if search fails/not indexed
+                    print(f"Search failed for {db_name}: {e}")
                     continue
             
             return {
