@@ -342,6 +342,33 @@ class LCAActivityViewSet(viewsets.ModelViewSet):
     serializer_class = LCAActivitySerializer
     permission_classes = [AllowAny]
     
+    def perform_create(self, serializer):
+        """
+        Custom create to automatically trigger LCA calculation.
+        """
+        try:
+            instance = serializer.save()
+            
+            # Print debug info
+            print(f"DEBUG: Created LCAActivity {instance.activity_id} ({instance.activity_name})")
+            print(f"DEBUG: Triggering LCA calculation for BW2 activity: {instance.bw2_activity_code} in {instance.bw2_database}")
+            
+            # Calculate immediately
+            try:
+                impact = instance.calculate_lca_impact()
+                instance.save()
+                print(f"DEBUG: LCA Calculation Success. Impact: {impact} kgCO2e")
+            except Exception as e:
+                import traceback
+                print(f"DEBUG: LCA Calculation Failed!")
+                print(f"DEBUG: Error: {str(e)}")
+                print(f"DEBUG: Traceback: {traceback.format_exc()}")
+                # We don't raise here, so the object is still created (with 0 emissions)
+                # This matches the user's observation, but now we have logs.
+        except Exception as e:
+            print(f"DEBUG: Error in perform_create: {str(e)}")
+            raise e
+    
     @action(detail=True, methods=['POST'])
     def calculate(self, request, pk=None):
         """
@@ -368,9 +395,16 @@ class LCAActivityViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"DEBUG: Manual Calculation Failed for activity {pk}")
+            print(f"DEBUG: Error: {str(e)}")
+            print(f"DEBUG: Traceback: {error_trace}")
+            
             return Response({
                 'success': False,
-                'error': str(e)
+                'error': str(e),
+                'traceback': error_trace
             }, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['POST'])
@@ -607,7 +641,8 @@ class BW2AdminViewSet(viewsets.ViewSet):
             for component in ai_data.get('components', []):
                 # 1. Try with generated search terms
                 search_term = component.get('search_terms', component.get('name'))
-                search_result = bw2Instance.search_activities_for_inputs(search_term, limit=5)
+                # Enforce 'ecoinvent' database filter for AI suggestions
+                search_result = bw2Instance.search_activities_for_inputs(search_term, limit=5, database_filters=['ecoinvent'])
                 
                 matches = []
                 if search_result['success']:
@@ -616,7 +651,7 @@ class BW2AdminViewSet(viewsets.ViewSet):
                 # 2. Fallback: If no matches, try searching with just the component name
                 if not matches and component.get('name') != search_term:
                     fallback_term = component.get('name')
-                    fallback_result = bw2Instance.search_activities_for_inputs(fallback_term, limit=5)
+                    fallback_result = bw2Instance.search_activities_for_inputs(fallback_term, limit=5, database_filters=['ecoinvent'])
                     if fallback_result['success']:
                         matches = fallback_result.get('activities', [])
                 

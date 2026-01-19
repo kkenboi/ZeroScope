@@ -16,7 +16,21 @@ class Project(models.Model):
     def __str__(self):
         return self.name
 
+    # Location fields
+    location = models.CharField(max_length=255, blank=True, null=True, help_text="Project location/HQ (City, Country)")
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+
     def save(self, *args, **kwargs):
+        # Auto-geocode if location is present but coords are missing
+        if self.location and (not self.latitude or not self.longitude):
+            from .utils.geocoding import get_coordinates
+            coords = get_coordinates(self.location) # Try to match country code first
+            # Ideally we'd have a better geocoder here for "City, Country"
+            if coords:
+                self.latitude = coords['lat']
+                self.longitude = coords['lng']
+        
         # This ensures last_modified is updated on every save
         self.last_modified = timezone.now()
         super().save(*args, **kwargs)
@@ -324,6 +338,15 @@ class EmissionActivity(models.Model):
     period_end = models.DateField(null=True, blank=True, help_text="End of reporting period (e.g., 2024-01-31)")
     is_recurring = models.BooleanField(default=True, help_text="Whether this activity recurs regularly (e.g., monthly electricity)")
     
+    # Geographic Location for Visualization
+    origin_location = models.CharField(max_length=255, blank=True, null=True, help_text="City, Country or Country Code")
+    origin_latitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    origin_longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    
+    destination_location = models.CharField(max_length=255, blank=True, null=True)
+    destination_latitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    destination_longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+
     # Tracking
     created_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True)
@@ -339,6 +362,22 @@ class EmissionActivity(models.Model):
 
         # kg → tonnes (emission factor is in kgCO₂e, result should be in tCO₂e)
         self.calculated_emissions = (qty_value * factor_value) / Decimal("1000")
+
+        # Auto-geocode origin
+        if self.origin_location and (not self.origin_latitude or not self.origin_longitude):
+            from .utils.geocoding import get_coordinates
+            coords = get_coordinates(self.origin_location)
+            if coords:
+                self.origin_latitude = coords['lat']
+                self.origin_longitude = coords['lng']
+        
+        # Auto-fill destination from Project if missing
+        if self.project and not self.destination_latitude:
+            if self.project.latitude:
+                self.destination_latitude = self.project.latitude
+                self.destination_longitude = self.project.longitude
+                if not self.destination_location:
+                    self.destination_location = self.project.location
 
         super().save(*args, **kwargs)
 
@@ -480,6 +519,15 @@ class LCAActivity(models.Model):
     period_end = models.DateField(null=True, blank=True, help_text="End of reporting period")
     is_recurring = models.BooleanField(default=False, help_text="Whether this activity recurs (usually False for LCA products)")
     
+    # Geographic Location
+    origin_location = models.CharField(max_length=255, blank=True, null=True, help_text="City, Country or BW2 Loc Code")
+    origin_latitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    origin_longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    
+    destination_location = models.CharField(max_length=255, blank=True, null=True)
+    destination_latitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    destination_longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+
     # Tracking
     created_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True)
@@ -529,7 +577,7 @@ class LCAActivity(models.Model):
             functional_unit = {activity: float(self.quantity)}
             
             # Perform LCA calculation
-            lca = bc.LCA(functional_unit, method)
+            lca = bc.LCA(functional_unit, method=method)
             lca.lci()
             lca.lcia()
             
@@ -556,6 +604,24 @@ class LCAActivity(models.Model):
         Override save to calculate LCA impact if needed
         Note: Calculation can be expensive, so it's not automatic
         """
+        # Auto-fill origin from BW2 location if available and coords missing
+        if self.bw2_location and (not self.origin_latitude or not self.origin_longitude):
+             from .utils.geocoding import get_coordinates
+             coords = get_coordinates(self.bw2_location)
+             if coords:
+                 self.origin_latitude = coords['lat']
+                 self.origin_longitude = coords['lng']
+                 if not self.origin_location:
+                     self.origin_location = self.bw2_location
+
+        # Auto-fill destination from Project if missing
+        if self.project and not self.destination_latitude:
+            if self.project.latitude:
+                self.destination_latitude = self.project.latitude
+                self.destination_longitude = self.project.longitude
+                if not self.destination_location:
+                    self.destination_location = self.project.location
+
         super().save(*args, **kwargs)
         
         # Update scope total after saving

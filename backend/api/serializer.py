@@ -116,6 +116,12 @@ class EmissionActivitySerializer(serializers.ModelSerializer):
             "period_start",
             "period_end",
             "is_recurring",
+            "origin_location",
+            "origin_latitude",
+            "origin_longitude",
+            "destination_location",
+            "destination_latitude",
+            "destination_longitude",
         ]
 
     def create(self, validated_data):
@@ -164,6 +170,12 @@ class EmissionActivityListSerializer(serializers.ModelSerializer):
             "period_start",
             "period_end",
             "is_recurring",
+            "origin_location",
+            "origin_latitude",
+            "origin_longitude",
+            "destination_location",
+            "destination_latitude",
+            "destination_longitude",
         ]
 
 
@@ -222,6 +234,12 @@ class LCAActivitySerializer(serializers.ModelSerializer):
             "created_date",
             "last_modified",
             "last_calculated",
+            "origin_location",
+            "origin_latitude",
+            "origin_longitude",
+            "destination_location",
+            "destination_latitude",
+            "destination_longitude",
         ]
         read_only_fields = [
             'activity_id', 
@@ -357,6 +375,9 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Project
-        fields = ["project_id", "name", "description", "created_date", "last_modified", "scopes", "lca_products"]
+        fields = [
+            "project_id", "name", "description", "created_date", "last_modified", 
+            "location", "latitude", "longitude",
+            "scopes", "lca_products"
+        ]
         read_only_fields = ['project_id', 'created_date', 'last_modified']  # Add last_modified to read-only
-

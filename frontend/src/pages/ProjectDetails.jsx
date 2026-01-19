@@ -887,7 +887,7 @@ function ProjectDetails() {
                   activityName: a.activity_name,
                   quantity: Number(a.quantity || 0),
                   unit: a.bw2_unit || '',
-                  source: a.bw2_activity_name || a.bw2_database || 'LCA Product',
+                  source: a.bw2_database || a.bw2_activity_name || 'LCA Product',
                   emissions: isFinite(Number(a.emissions_tco2e)) ? Number(a.emissions_tco2e).toFixed(3) : "",
                   scope3Category: a.scope3_category || '',
                 }));

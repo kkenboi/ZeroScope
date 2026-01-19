@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import GlobeVisualization from "../components/GlobeVisualization"; // Add Import
+import PublicIcon from '@mui/icons-material/Public'; // Add Icon
 import {
   Box,
   Typography,
@@ -749,6 +751,7 @@ function Analysis() {
             <Tab label="Uncertainty - Product" icon={<ScienceIcon />} iconPosition="start" />
             <Tab label="Sensitivity - Project" icon={<TrendingUpIcon />} iconPosition="start" />
             <Tab label="Sensitivity - Product" icon={<ScienceIcon />} iconPosition="start" />
+            <Tab label="Supply Chain Map" icon={<PublicIcon />} iconPosition="start" />
           </Tabs>
         </Box>
 
@@ -1656,6 +1659,59 @@ function Analysis() {
               </Box>
             </Box>
           </Box>
+        </TabPanel>
+
+        {/* Tab 4: Supply Chain Map */}
+        <TabPanel value={tabValue} index={4}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Configuration
+                  </Typography>
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Select Project</InputLabel>
+                    <Select
+                      value={selectedProject}
+                      label="Select Project"
+                      onChange={(e) => setSelectedProject(e.target.value)}
+                    >
+                      {projects.map((project) => (
+                        <MenuItem key={project.project_id} value={project.project_id}>
+                          {project.project_name || project.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Typography variant="body2" color="text.secondary">
+                    Select a project to visualize its supply chain emission footprint.
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={8}>
+              {selectedProject ? (
+                <Card>
+                  <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+                    <GlobeVisualization projectId={selectedProject} />
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent sx={{ textAlign: "center", py: 10 }}>
+                    <PublicIcon sx={{ fontSize: 100, color: "text.secondary", mb: 3, opacity: 0.5 }} />
+                    <Typography variant="h5" color="text.secondary" sx={{ fontWeight: 600, mb: 1 }}>
+                      Select a Project
+                    </Typography>
+                    <Typography variant="body1" color="text.secondary">
+                      Choose a project to view the global supply chain map.
+                    </Typography>
+                  </CardContent>
+                </Card>
+              )}
+            </Grid>
+          </Grid>
         </TabPanel>
       </Box>
     );

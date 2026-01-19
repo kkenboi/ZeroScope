@@ -299,13 +299,15 @@ class BW2LCA:
                 'error': str(e)
             }
     
-    def search_activities_for_inputs(self, search_term, limit=50):
+    def search_activities_for_inputs(self, search_term, limit=50, database_filters=None):
         """
-        Search across all databases for activities to use as inputs
+        Search across databases for activities to use as inputs.
         
         Args:
             search_term: search string
             limit: maximum number of results to return
+            database_filters: optional list of strings (e.g., ['ecoinvent']). 
+                              If provided, only databases containing one of these strings will be searched.
         """
         bd.projects.set_current(self.PROJECT_NAME)
         try:
@@ -322,6 +324,12 @@ class BW2LCA:
                 }
             
             for db_name in bd.databases:
+                # Apply filter if provided
+                if database_filters:
+                    # Check if db_name contains any of the filter strings (case-insensitive)
+                    if not any(f.lower() in db_name.lower() for f in database_filters):
+                        continue
+
                 try:
                     db = bd.Database(db_name)
                     # Use Brightway's native search (Whoosh index)

@@ -53,13 +53,13 @@ function LCAProductSearch({ open, onClose, onSelect }) {
       });
 
       const response = await fetch(`/api/brightway2/search_activities_for_inputs/?${params}`);
-      
+
       if (!response.ok) {
         throw new Error('Search failed');
       }
 
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Search failed');
       }
@@ -69,7 +69,7 @@ function LCAProductSearch({ open, onClose, onSelect }) {
       if (database) {
         activities = activities.filter(a => a.database === database);
       }
-      
+
       setResults(activities);
     } catch (err) {
       setError(err.message);
@@ -106,8 +106,8 @@ function LCAProductSearch({ open, onClose, onSelect }) {
   };
 
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={handleClose}
       maxWidth="md"
       fullWidth
@@ -124,8 +124,8 @@ function LCAProductSearch({ open, onClose, onSelect }) {
       </DialogTitle>
 
       <DialogContent>
-        <Tabs 
-          value={tabValue} 
+        <Tabs
+          value={tabValue}
           onChange={(e, newValue) => setTabValue(newValue)}
           sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
         >
