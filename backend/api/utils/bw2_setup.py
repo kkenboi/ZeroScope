@@ -301,18 +301,18 @@ class BW2LCA:
     
     def search_activities_for_inputs(self, search_term, limit=50, database_filters=None):
         """
-        Search across databases for activities to use as inputs.
+        Search across databases for activities to use as inputs using RapidFuzz.
         
         Args:
-            search_term: search string
+            search_term: search string. If empty, returns suggestions.
             limit: maximum number of results to return
-            database_filters: optional list of strings (e.g., ['ecoinvent']). 
-                              If provided, only databases containing one of these strings will be searched.
+            database_filters: optional list of strings. If provided, ONLY databases matching these strings will be searched.
         """
         bd.projects.set_current(self.PROJECT_NAME)
         try:
+            from rapidfuzz import process, fuzz
+
             results = []
-            search_lower = search_term.lower()
             
             # Check if there are any databases
             if not bd.databases:
@@ -323,21 +323,18 @@ class BW2LCA:
                     'message': 'No databases found. Please import a database first.'
                 }
             
-            for db_name in bd.databases:
-                # Apply filter if provided
-                if database_filters:
-                    # Check if db_name contains any of the filter strings (case-insensitive)
-                    if not any(f.lower() in db_name.lower() for f in database_filters):
-                        continue
-
-                try:
-                    db = bd.Database(db_name)
-                    # Use Brightway's native search (Whoosh index)
-                    # It returns a list of Activity objects
-                    search_results = db.search(search_term, limit=limit)
+            # SUGGESTIONS MODE: If search term is empty, return top items from requested databases
+            if not search_term:
+                for db_name in bd.databases:
+                    # Apply strict filter
+                    if database_filters:
+                        if not any(f.lower() == db_name.lower() or f.lower() in db_name.lower() for f in database_filters):
+                            continue
                     
-                    for act in search_results:
-                        try:
+                    try:
+                        db = bd.Database(db_name)
+                        # Take first N items as suggestions
+                        for act in list(db)[:limit]:
                             results.append({
                                 'code': act['code'],
                                 'name': act['name'],
@@ -345,24 +342,81 @@ class BW2LCA:
                                 'unit': act.get('unit', 'Unknown'),
                                 'database': act['database']
                             })
-                            
                             if len(results) >= limit:
                                 break
-                        except Exception:
-                            continue
-                            
+                    except Exception:
+                        continue
                     if len(results) >= limit:
                         break
-                        
-                except Exception as e:
-                    # Fallback or skip if search fails/not indexed
-                    print(f"Search failed for {db_name}: {e}")
-                    continue
+                
+                return {
+                    'success': True,
+                    'is_suggestion': True,
+                    'activities': results,
+                    'total_found': len(results)
+                }
+
+            # FUZZY SEARCH MODE
+            # 1. Collect all candidates
+            candidates = [] # List of (name, activity_object)
             
+            for db_name in bd.databases:
+                # Apply strict filter
+                if database_filters:
+                    if not any(f.lower() == db_name.lower() or f.lower() in db_name.lower() for f in database_filters):
+                        continue
+                
+                try:
+                    db = bd.Database(db_name)
+                    # Iterate through database activities
+                    # Optimization: We could cache this if databases are huge, but for typical LCA (20k items), 
+                    # generic iteration is usually acceptable.
+                    for act in db:
+                        candidates.append(act)
+                except Exception:
+                    continue
+
+            if not candidates:
+                return {
+                    'success': True,
+                    'activities': [],
+                    'total_found': 0
+                }
+
+            # 2. Use RapidFuzz to extract top matches
+            # process.extract returns list of (choice, score, index)
+            # We map candidates to their names for searching
+            candidate_names = [act['name'] for act in candidates]
+            
+            # scrorer=fuzz.WRatio handles case insensitivity and partial matching well
+            scored_results = process.extract(
+                search_term, 
+                candidate_names, 
+                scorer=fuzz.WRatio, 
+                limit=limit
+            )
+            
+            # 3. Format results
+            final_results = []
+            for name, score, index in scored_results:
+                # Filter out very poor matches if needed, though usually top N is what user wants
+                if score < 30: 
+                    continue
+                    
+                act = candidates[index]
+                final_results.append({
+                    'code': act['code'],
+                    'name': act['name'],
+                    'location': act.get('location', 'Unknown'),
+                    'unit': act.get('unit', 'Unknown'),
+                    'database': act['database'],
+                    'score': score # Optional: return score for debugging
+                })
+
             return {
                 'success': True,
-                'activities': results,
-                'total_found': len(results)
+                'activities': final_results,
+                'total_found': len(final_results)
             }
         except Exception as e:
             return {

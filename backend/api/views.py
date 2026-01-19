@@ -856,22 +856,21 @@ class BW2AdminViewSet(viewsets.ViewSet):
     def search_activities_for_inputs(self, request):
         """
         Search for activities to use as inputs in custom products
-        Query params: search_term, limit (optional, default 50)
+        Query params: search_term, limit (optional, default 50), database (optional filter)
         """
         try:
             from .utils.bw2_setup import BW2LCA
             
-            search_term = request.query_params.get('search_term', '')
+            search_term = request.query_params.get('search_term', '').strip()
             limit = int(request.query_params.get('limit', 50))
+            database_filter = request.query_params.get('database')
             
-            if not search_term:
-                return Response({
-                    'success': False,
-                    'error': 'Missing required parameter: search_term'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            database_filters = []
+            if database_filter:
+                database_filters = [database_filter]
             
             bw2Instance = BW2LCA()
-            result = bw2Instance.search_activities_for_inputs(search_term, limit)
+            result = bw2Instance.search_activities_for_inputs(search_term, limit, database_filters)
             
             if result['success']:
                 return Response(result, status=status.HTTP_200_OK)

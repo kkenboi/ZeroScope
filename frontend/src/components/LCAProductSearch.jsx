@@ -40,17 +40,23 @@ function LCAProductSearch({ open, onClose, onSelect }) {
   const [results, setResults] = useState([]);
   const [error, setError] = useState(null);
 
-  const handleSearch = async (database = null) => {
-    if (!searchQuery.trim()) return;
+  const handleSearch = async (database = null, forceQuery = null) => {
+    // If we're forcing a query (like loading suggestions), use it. otherwise use state.
+    // Allow empty string for suggestions.
+    const query = forceQuery !== null ? forceQuery : searchQuery;
 
     setSearching(true);
     setError(null);
 
     try {
       const params = new URLSearchParams({
-        search_term: searchQuery,
+        search_term: query,
         limit: '50',
       });
+
+      if (database) {
+        params.append('database', database);
+      }
 
       const response = await fetch(`/api/brightway2/search_activities_for_inputs/?${params}`);
 
@@ -64,11 +70,9 @@ function LCAProductSearch({ open, onClose, onSelect }) {
         throw new Error(data.error || 'Search failed');
       }
 
-      // Filter by database if specified
+      // Filter by database if specified (already done on backend now, but double check doesn't hurt)
       let activities = data.activities || [];
-      if (database) {
-        activities = activities.filter(a => a.database === database);
-      }
+      // We rely on backend filtering now for strictly separating custom/ecoinvent
 
       setResults(activities);
     } catch (err) {
@@ -126,7 +130,17 @@ function LCAProductSearch({ open, onClose, onSelect }) {
       <DialogContent>
         <Tabs
           value={tabValue}
-          onChange={(e, newValue) => setTabValue(newValue)}
+          onChange={(e, newValue) => {
+            setTabValue(newValue);
+            // Clear results and auto-load suggestions for the new tab
+            setResults([]);
+            setSearchQuery('');
+            if (newValue === 1) {
+              handleSearch('custom_products', '');
+            } else {
+              handleSearch(null, '');
+            }
+          }}
           sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
         >
           <Tab label="All Databases" icon={<ScienceIcon />} iconPosition="start" />
@@ -144,6 +158,7 @@ function LCAProductSearch({ open, onClose, onSelect }) {
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyPress={handleKeyPress}
             disabled={searching}
+            helperText="Leave empty to see suggestions"
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -156,7 +171,7 @@ function LCAProductSearch({ open, onClose, onSelect }) {
           <Button
             variant="contained"
             onClick={() => handleSearch()}
-            disabled={searching || !searchQuery.trim()}
+            disabled={searching}
             fullWidth
             sx={{ mb: 2 }}
           >
@@ -175,6 +190,7 @@ function LCAProductSearch({ open, onClose, onSelect }) {
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyPress={handleKeyPress}
             disabled={searching}
+            helperText="Leave empty to see suggestions"
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -187,7 +203,7 @@ function LCAProductSearch({ open, onClose, onSelect }) {
           <Button
             variant="contained"
             onClick={() => handleSearch('custom_products')}
-            disabled={searching || !searchQuery.trim()}
+            disabled={searching}
             fullWidth
             sx={{ mb: 2 }}
           >
@@ -208,9 +224,15 @@ function LCAProductSearch({ open, onClose, onSelect }) {
             </Typography>
           )}
 
-          {!searchQuery && !searching && (
+          {!searchQuery && !searching && results.length > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ px: 2, display: 'block', mt: 1 }}>
+              Suggestions:
+            </Typography>
+          )}
+
+          {!searchQuery && !searching && results.length === 0 && (
             <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
-              Enter a search term and click Search to find activities
+              Enter a search term or click Search to see suggestions
             </Typography>
           )}
 
