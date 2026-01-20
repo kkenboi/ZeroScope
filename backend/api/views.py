@@ -368,6 +368,30 @@ class LCAActivityViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"DEBUG: Error in perform_create: {str(e)}")
             raise e
+
+    def perform_update(self, serializer):
+        """
+        Custom update to automatically trigger LCA calculation.
+        """
+        try:
+            instance = serializer.save()
+            
+            print(f"DEBUG: Updated LCAActivity {instance.activity_id} ({instance.activity_name})")
+            print(f"DEBUG: Recalculating LCA impact...")
+            
+            # Calculate immediately
+            try:
+                impact = instance.calculate_lca_impact()
+                instance.save()
+                print(f"DEBUG: LCA Recalculation Success. Impact: {impact} kgCO2e")
+            except Exception as e:
+                import traceback
+                print(f"DEBUG: LCA Recalculation Failed!")
+                print(f"DEBUG: Error: {str(e)}")
+                print(f"DEBUG: Traceback: {traceback.format_exc()}")
+        except Exception as e:
+            print(f"DEBUG: Error in perform_update: {str(e)}")
+            raise e
     
     @action(detail=True, methods=['POST'])
     def calculate(self, request, pk=None):

@@ -36,6 +36,7 @@ import {
   Calculate as CalculateIcon,
   Science as ScienceIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
 } from "@mui/icons-material"
 import LCAProductSearch from "../components/LCAProductSearch"
 
@@ -49,8 +50,9 @@ function ProjectDetails() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Form state for new activity dialog
+  // Form state for new/edit activity dialog
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingActivityId, setEditingActivityId] = useState(null) // ID of activity being edited
   const [activityType, setActivityType] = useState('emission_factor') // 'emission_factor' or 'lca'
   const [lcaSearchOpen, setLcaSearchOpen] = useState(false)
   const [selectedLCAProduct, setSelectedLCAProduct] = useState(null)
@@ -137,9 +139,9 @@ function ProjectDetails() {
     try {
       const endpoint = activityType === 'LCA'
         ? `/api/lca-activities/${activityId}/`
-        : `/api/activities/${activityId}/`
+        : `/api/emission-activities/${activityId}/`
 
-      const deleteResponse = await fetch(`http://localhost:8000${endpoint}`, {
+      const deleteResponse = await fetch(`${endpoint}`, {
         method: 'DELETE',
       })
 
@@ -158,6 +160,78 @@ function ProjectDetails() {
       alert('Failed to delete activity. Please try again.')
     }
   }
+
+  const handleEditActivity = (activity) => {
+    setEditingActivityId(activity.activityId);
+    setActivityType(activity.type === 'LCA' ? 'lca' : 'emission_factor');
+
+    // Find the original activity object from the project data
+    // We need to look through all scopes to find it
+    let originalActivity = null;
+    let foundScope = null;
+
+    project.scopes.forEach(scope => {
+      if (activity.type === 'LCA') {
+        const found = (scope.lca_activities || []).find(a => a.activity_id === activity.activityId);
+        if (found) {
+          originalActivity = found;
+          foundScope = scope;
+        }
+      } else {
+        const found = (scope.activities || []).find(a => a.activity_id === activity.activityId);
+        if (found) {
+          originalActivity = found;
+          foundScope = scope;
+        }
+      }
+    });
+
+    if (!originalActivity) return;
+
+    // Pre-fill form
+    setNewActivity({
+      scope: foundScope.scope_number,
+      activityName: originalActivity.activity_name,
+      description: originalActivity.description || "",
+      quantity: originalActivity.quantity,
+      emissionFactorId: activity.type !== 'LCA' ? originalActivity.emission_factor : "",
+      scope3Category: originalActivity.scope3_category || "",
+      isRecurring: originalActivity.is_recurring,
+      periodStart: originalActivity.period_start || "",
+      periodEnd: originalActivity.period_end || ""
+    });
+
+    if (activity.type === 'LCA') {
+      setSelectedLCAProduct({
+        name: originalActivity.bw2_activity_name || "LCA Product",
+        database: originalActivity.bw2_database,
+        code: originalActivity.bw2_activity_code,
+        unit: originalActivity.bw2_unit,
+        location: originalActivity.bw2_location
+      });
+    } else {
+      // Emission Factor ID is just ID in django, but we need the object to show details
+      // The API returns emission_factor as ID in serialized form usually? 
+      // Wait, EmissionActivitySerializer usually nests emission_factor or returns ID?
+      // Let's assume ID is correct or available. 
+      // Actually, looking at serializer: emission_factor = EmissionFactorSerializer(read_only=True)
+      // And creation accepts emission_factor_id. 
+      // So `originalActivity.emission_factor` is an OBJECT.
+      if (typeof originalActivity.emission_factor === 'object') {
+        setNewActivity(prev => ({
+          ...prev,
+          emissionFactorId: originalActivity.emission_factor.factor_id
+        }));
+      } else {
+        setNewActivity(prev => ({
+          ...prev,
+          emissionFactorId: originalActivity.emission_factor
+        }));
+      }
+    }
+
+    setDialogOpen(true);
+  };
 
   // Filtered factors based on selected scope and category
   const availableFactors = useMemo(() => {
@@ -209,11 +283,14 @@ function ProjectDetails() {
     setCalculating(true);
 
     try {
-      let endpoint, payload, activityId;
+      let endpoint, payload, method;
 
       if (activityType === 'lca') {
-        // Create LCA Activity
-        endpoint = '/api/lca-activities/';
+        endpoint = editingActivityId
+          ? `/api/lca-activities/${editingActivityId}/`
+          : '/api/lca-activities/';
+        method = editingActivityId ? 'PATCH' : 'POST';
+
         payload = {
           project: project.project_id,
           scope_number: newActivity.scope,
@@ -222,9 +299,12 @@ function ProjectDetails() {
           bw2_database: selectedLCAProduct.database,
           bw2_activity_code: selectedLCAProduct.code,
           quantity: Number(newActivity.quantity),
-          impact_method: {
-            method: ['ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)']
-          },
+          // Only send impact method & recurrance details on create, or update if changed
+          ...(editingActivityId ? {} : {
+            impact_method: {
+              method: ['ecoinvent-3.9.1', 'IPCC 2013', 'climate change', 'global warming potential (GWP100)']
+            }
+          }),
           is_recurring: newActivity.isRecurring,
           period_start: newActivity.periodStart || null,
           period_end: newActivity.isRecurring ? newActivity.periodEnd : null,
@@ -252,7 +332,7 @@ function ProjectDetails() {
         }
 
         const res = await fetch(endpoint, {
-          method: "POST",
+          method: method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
@@ -262,24 +342,40 @@ function ProjectDetails() {
           throw new Error(JSON.stringify(err));
         }
 
-        const newLCAActivity = await res.json();
-        activityId = newLCAActivity.activity_id;
-
-        // Calculate LCA impact
-        const calcRes = await fetch(`/api/lca-activities/${activityId}/calculate/`, {
-          method: 'POST',
-        });
-
-        if (!calcRes.ok) {
-          console.warn('LCA calculation failed, but activity was created');
+        if (!editingActivityId) {
+          const newLCAActivity = await res.json();
+          // Initial calculation for new items
+          await fetch(`/api/lca-activities/${newLCAActivity.activity_id}/calculate/`, {
+            method: 'POST',
+          });
         }
+        // For updates, the backend perform_update handles calculation now.
 
-        alert("LCA Activity added and calculated successfully!");
+        alert(editingActivityId ? "LCA Activity updated!" : "LCA Activity added and calculated successfully!");
 
       } else {
-        // Create regular Emission Factor Activity
+        // Regular Emission Factor Activity
         const selectedFactor = factors.find(f => f.factor_id === newActivity.emissionFactorId);
 
+        endpoint = editingActivityId
+          ? `/api/emission-activities/${editingActivityId}/`
+          : "/api/emission-activities/";
+        method = editingActivityId ? 'PATCH' : 'POST';
+
+        payload = {
+          project: project.project_id,
+          scope_number: newActivity.scope,
+          activity_name: newActivity.activityName,
+          description: newActivity.description,
+          quantity: Number(newActivity.quantity),
+          unit: selectedFactor?.unit, // Unit might not change on edit if factor unchanged
+          emission_factor_id: selectedFactor?.factor_id,
+          is_recurring: newActivity.isRecurring,
+          period_start: newActivity.periodStart || null,
+          period_end: newActivity.isRecurring ? newActivity.periodEnd : null,
+        };
+
+        // Handle Scope 3 mapping same as before...
         const categoryMapping = {
           'purchased_goods_services': 'purchased_goods_services',
           'capital_goods': 'capital_goods',
@@ -297,26 +393,14 @@ function ProjectDetails() {
           'franchises': 'franchises',
           'investments': 'investments'
         };
-
-        payload = {
-          project: project.project_id,
-          scope_number: newActivity.scope,
-          activity_name: newActivity.activityName,
-          description: newActivity.description,
-          quantity: Number(newActivity.quantity),
-          unit: selectedFactor.unit,
-          emission_factor_id: selectedFactor.factor_id,
-          is_recurring: newActivity.isRecurring,
-          period_start: newActivity.periodStart || null,
-          period_end: newActivity.isRecurring ? newActivity.periodEnd : null,
-        };
-
         if (newActivity.scope === 3 && newActivity.scope3Category) {
           payload.scope3_category = categoryMapping[newActivity.scope3Category] || newActivity.scope3Category;
         }
 
-        const res = await fetch("/api/emission-activities/", {
-          method: "POST",
+        console.log(`[DEBUG] Updating activity. Endpoint: ${endpoint}, Method: ${method}, Payload:`, payload);
+
+        const res = await fetch(endpoint, {
+          method: method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
@@ -326,7 +410,7 @@ function ProjectDetails() {
           throw new Error(JSON.stringify(err));
         }
 
-        alert("Activity added successfully!");
+        alert(editingActivityId ? "Activity updated!" : "Activity added successfully!");
       }
 
       // Reset form
@@ -343,6 +427,7 @@ function ProjectDetails() {
       });
       setSelectedLCAProduct(null);
       setActivityType('emission_factor');
+      setEditingActivityId(null);
       setDialogOpen(false);
 
       // Refresh project details
@@ -411,7 +496,27 @@ function ProjectDetails() {
 
       {/* Add Activity Dialog trigger */}
       <Box sx={{ my: 2 }}>
-        <Button variant="contained" onClick={() => setDialogOpen(true)}>Add Emission Activity</Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            setEditingActivityId(null);
+            setActivityType('emission_factor');
+            setNewActivity({
+              scope: 1,
+              activityName: "",
+              description: "",
+              quantity: "",
+              emissionFactorId: "",
+              scope3Category: "",
+              isRecurring: true,
+              periodStart: "",
+              periodEnd: ""
+            });
+            setDialogOpen(true);
+          }}
+        >
+          Add Emission Activity
+        </Button>
       </Box>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
@@ -436,6 +541,9 @@ function ProjectDetails() {
                 exclusive
                 onChange={(e, value) => {
                   if (value !== null) {
+                    // Prevent modifying type when editing
+                    if (editingActivityId) return;
+
                     setActivityType(value);
                     setNewActivity(prev => ({
                       ...prev,
@@ -793,7 +901,7 @@ function ProjectDetails() {
               (activityType === 'emission_factor' ? !newActivity.emissionFactorId : !selectedLCAProduct)
             }
           >
-            {calculating ? 'Adding...' : 'Add Activity'}
+            {calculating ? 'Saving...' : (editingActivityId ? 'Update Activity' : 'Add Activity')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -874,7 +982,7 @@ function ProjectDetails() {
                   activityName: a.activity_name,
                   quantity: Number(a.quantity || 0),
                   unit: a.unit,
-                  source: a.emission_factor?.name || '',
+                  source: a.emission_factor?.source || a.emission_factor?.name || '',
                   emissions: isFinite(Number(a.calculated_emissions)) ? Number(a.calculated_emissions).toFixed(3) : "",
                   scope3Category: a.scope3_category || '',
                 }));
@@ -918,16 +1026,25 @@ function ProjectDetails() {
               {
                 field: 'actions',
                 headerName: 'Actions',
-                width: 100,
+                width: 120,
                 sortable: false,
                 renderCell: (params) => (
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() => handleDeleteActivity(params.row.activityId, params.row.type)}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
+                  <Stack direction="row" spacing={1}>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => handleEditActivity(params.row)}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => handleDeleteActivity(params.row.activityId, params.row.type)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
                 )
               },
             ];

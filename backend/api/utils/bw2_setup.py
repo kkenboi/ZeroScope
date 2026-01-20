@@ -15,6 +15,15 @@ class BW2LCA:
     def __init__(self):
         # Set the project to the fixed ZeroScope project
         bd.projects.set_current(self.PROJECT_NAME)
+        
+        # Ensure base data exists
+        if "biosphere3" not in bd.databases:
+            print("biosphere3 not found. Running bw2setup() to install default biosphere and methods...")
+            try:
+                bi.bw2setup()
+                print("bw2setup() complete.")
+            except Exception as e:
+                print(f"Error running bw2setup: {e}")
     
     def reset_project(self):
         """
