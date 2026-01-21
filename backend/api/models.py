@@ -577,9 +577,19 @@ class LCAActivity(models.Model):
             functional_unit = {activity: float(self.quantity)}
             
             # Perform LCA calculation
-            lca = bc.LCA(functional_unit, method=method)
-            lca.lci()
-            lca.lcia()
+            try:
+                lca = bc.LCA(functional_unit, method=method)
+                lca.lci()
+                lca.lcia()
+            except bc.errors.NonsquareTechnosphere:
+                # Fallback to LeastSquaresLCA if matrix is not square (common with ecoinvent 3.9+)
+                # This approximates the solution
+                if hasattr(bc, 'LeastSquaresLCA'):
+                    lca = bc.LeastSquaresLCA(functional_unit, method=method)
+                    lca.lci()
+                    lca.lcia()
+                else:
+                    raise
             
             # Result is in the unit of the impact method (kgCO₂e for GWP)
             impact = lca.score

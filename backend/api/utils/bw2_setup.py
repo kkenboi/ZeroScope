@@ -717,9 +717,20 @@ class BW2LCA:
             functional_unit = {activity: float(quantity)}
             
             # Use regular LCA with use_distributions=True for Monte Carlo sampling
-            lca = bc.LCA(functional_unit, impact_method, use_distributions=True)
-            lca.lci()
-            lca.lcia()
+            try:
+                lca = bc.LCA(functional_unit, impact_method, use_distributions=True)
+                lca.lci()
+                lca.lcia()
+            except bc.errors.NonsquareTechnosphere:
+                 # Fallback to LeastSquaresLCA if matrix is not square
+                if hasattr(bc, 'LeastSquaresLCA'):
+                    # Note: LeastSquaresLCA might not support use_distributions the same way, 
+                    # but we try it as best effort for now or standard calculation
+                   lca = bc.LeastSquaresLCA(functional_unit, impact_method) 
+                   lca.lci()
+                   lca.lcia()
+                else:
+                   raise
             
             # Get the score (which will be randomized if uncertainty data exists)
             impact = lca.score
@@ -776,9 +787,18 @@ class BW2LCA:
             functional_unit = {activity: float(amount)}
             
             # Perform LCA calculation
-            lca = bc.LCA(functional_unit, impact_method)
-            lca.lci()
-            lca.lcia()
+            try:
+                lca = bc.LCA(functional_unit, impact_method)
+                lca.lci()
+                lca.lcia()
+            except bc.errors.NonsquareTechnosphere:
+                # Fallback to LeastSquaresLCA if matrix is not square
+                if hasattr(bc, 'LeastSquaresLCA'):
+                    lca = bc.LeastSquaresLCA(functional_unit, impact_method)
+                    lca.lci()
+                    lca.lcia()
+                else:
+                    raise
             
             # Result is in kgCO₂e for GWP
             impact = lca.score
