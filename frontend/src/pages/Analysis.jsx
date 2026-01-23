@@ -21,6 +21,9 @@ import {
   Chip,
   Divider,
   Slider,
+  Tooltip as MuiTooltip, // Renamed to avoid conflict with Recharts
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import {
   BarChart,
@@ -35,12 +38,19 @@ import {
   Line,
   Area,
   AreaChart,
+  ReferenceLine,
+  ScatterChart,
+  Scatter,
+  ZAxis,
 } from "recharts";
 import {
   Assessment as AssessmentIcon,
   Science as ScienceIcon,
   Calculate as CalculateIcon,
   TrendingUp as TrendingUpIcon,
+  HelpOutline as HelpIcon,
+  InfoOutlined as InfoIcon,
+  ArrowForward as ArrowForwardIcon,
 } from "@mui/icons-material";
 
 function TabPanel({ children, value, index }) {
@@ -489,20 +499,44 @@ function Analysis() {
     if (!results || !results.histogram) return null;
 
     const chartData = results.histogram.map((count, idx) => ({
-      bin: `${results.bin_edges[idx].toFixed(2)}`,
+      bin: `${results.bin_edges[idx].toFixed(4)}`, // Increased precision to avoid duplicate keys
       count,
     }));
 
+    // Check if we should show simpler visualization for low iterations
+    const isLowIterations = (results.statistics?.n || iterations) < 30;
+    const stats = results.statistics;
+
     return (
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="bin" label={{ value: "tCO₂e", position: "insideBottom", offset: -5 }} />
-          <YAxis label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
-          <Tooltip />
-          <Bar dataKey="count" fill={theme.palette.primary.main} />
-        </BarChart>
-      </ResponsiveContainer>
+      <Box sx={{ height: 400, width: '100%' }}>
+        <Box sx={{ mb: 1, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <Typography variant="h6">Distribution of Results</Typography>
+          <Typography variant="caption" color={iterations < 100 ? "warning.main" : "text.secondary"}>
+            n = {iterations} {iterations < 100 && "(Results may be unstable)"}
+          </Typography>
+        </Box>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="bin" label={{ value: "tCO₂e", position: "insideBottom", offset: -5 }} />
+            <YAxis label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
+            <Tooltip
+              cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+              formatter={(value) => [value, "Run Count"]}
+            />
+            <Bar dataKey="count" fill={theme.palette.primary.main} radius={[4, 4, 0, 0]} />
+
+            {/* Reference Lines for Mean and CI */}
+            {stats && (
+              <>
+                <ReferenceLine x={stats.mean.toFixed(2)} stroke="red" strokeDasharray="3 3" label={{ position: 'top', value: 'Mean', fill: 'red', fontSize: 12 }} />
+                <ReferenceLine x={stats.percentile_2_5.toFixed(2)} stroke="green" strokeDasharray="3 3" label={{ position: 'top', value: 'Lower CI', fill: 'green', fontSize: 10 }} />
+                <ReferenceLine x={stats.percentile_97_5.toFixed(2)} stroke="green" strokeDasharray="3 3" label={{ position: 'top', value: 'Upper CI', fill: 'green', fontSize: 10 }} />
+              </>
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      </Box>
     );
   };
 
@@ -510,92 +544,103 @@ function Analysis() {
     if (!results || !results.statistics) return null;
 
     const stats = results.statistics;
+    const cv = stats.std / stats.mean; // Coefficient of Variation
+
+    // Smart Interpretation Logic (Badges only)
+    let uncertaintyLevel = "Low";
+    let uncertaintyColor = "success";
+
+    if (cv > 0.3) {
+      uncertaintyLevel = "High";
+      uncertaintyColor = "error";
+    } else if (cv > 0.1) {
+      uncertaintyLevel = "Moderate";
+      uncertaintyColor = "warning";
+    }
+
+    const definitions = {
+      mean: "The average of all simulation runs. This is the 'most expected' value.",
+      ci: "95% Confidence Interval: We are 95% sure the true value is within this range.",
+      std: "Standard Deviation: Measures how spread out the results are.",
+    };
 
     return (
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary">
-              Mean
-            </Typography>
-            <Typography variant="h6">
-              {stats.mean.toFixed(3)} tCO₂e
-            </Typography>
-          </Paper>
+      <Box>
+        {/* Improved Neutral Card with Hero Stat */}
+        <Card sx={{ mb: 3, bgcolor: 'grey.50' }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 1 }}>
+                    ESTIMATED IMPACT
+                  </Typography>
+                  <MuiTooltip title={definitions.mean} arrow>
+                    <HelpIcon sx={{ fontSize: 16, ml: 0.5, color: 'text.disabled', cursor: 'help' }} />
+                  </MuiTooltip>
+                </Box>
+                <Typography variant="h3" sx={{ fontWeight: 700, color: 'primary.main', mb: 1 }}>
+                  {stats.mean.toFixed(3)} <Typography component="span" variant="h5" color="text.secondary">tCO₂e</Typography>
+                </Typography>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip
+                    label={`Uncertainty: ${uncertaintyLevel}`}
+                    color={uncertaintyColor}
+                    size="small"
+                    sx={{ fontWeight: 'bold' }}
+                  />
+                  <Typography variant="body2" color="text.secondary">
+                    <strong>95% CI:</strong> {stats.percentile_2_5.toFixed(3)} – {stats.percentile_97_5.toFixed(3)}
+                  </Typography>
+                  <MuiTooltip title={definitions.ci} arrow>
+                    <InfoIcon sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
+                  </MuiTooltip>
+                </Box>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* Detailed Statistics List (Compact) */}
+        <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', textTransform: 'uppercase', fontSize: '0.75rem' }}>
+          Detailed Statistics
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={6}>
+            <Paper variant="outlined" sx={{ p: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" display="block">Median</Typography>
+              <Typography variant="subtitle1" fontWeight={600}>{stats.median.toFixed(3)}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={6}>
+            <Paper variant="outlined" sx={{ p: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="caption" color="text.secondary">Std Dev</Typography>
+                <MuiTooltip title={definitions.std} arrow>
+                  <HelpIcon sx={{ fontSize: 12, ml: 0.5, color: 'text.disabled' }} />
+                </MuiTooltip>
+              </Box>
+              <Typography variant="subtitle1" fontWeight={600}>±{stats.std.toFixed(3)}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={6}>
+            <Paper variant="outlined" sx={{ p: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" display="block">Minimum</Typography>
+              <Typography variant="subtitle1">{stats.min.toFixed(3)}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={6}>
+            <Paper variant="outlined" sx={{ p: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" display="block">Maximum</Typography>
+              <Typography variant="subtitle1">{stats.max.toFixed(3)}</Typography>
+            </Paper>
+          </Grid>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary">
-              Std Dev
-            </Typography>
-            <Typography variant="h6">
-              ±{stats.std.toFixed(3)} tCO₂e
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary">
-              95% CI Lower
-            </Typography>
-            <Typography variant="h6">
-              {stats.percentile_2_5.toFixed(3)} tCO₂e
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary">
-              95% CI Upper
-            </Typography>
-            <Typography variant="h6">
-              {stats.percentile_97_5.toFixed(3)} tCO₂e
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary">
-              Median
-            </Typography>
-            <Typography variant="h6">
-              {stats.median.toFixed(3)} tCO₂e
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary">
-              Minimum
-            </Typography>
-            <Typography variant="h6">
-              {stats.min.toFixed(3)} tCO₂e
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary">
-              Maximum
-            </Typography>
-            <Typography variant="h6">
-              {stats.max.toFixed(3)} tCO₂e
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary">
-              CV (%)
-            </Typography>
-            <Typography variant="h6">
-              {((stats.std / stats.mean) * 100).toFixed(1)}%
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
+      </Box>
     );
   };
+
 
   const renderTimelineChart = (results) => {
     if (!results || !results.timeline) return null;
@@ -637,6 +682,14 @@ function Analysis() {
 
     return (
       <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" sx={{ mr: 1 }}>
+            What drives the uncertainty?
+          </Typography>
+          <MuiTooltip title="The top bars show which activities have the biggest impact on the total uncertainty. Focus on reducing uncertainty in these activities to improve your overall confidence." arrow>
+            <InfoIcon color="action" fontSize="small" sx={{ cursor: 'help' }} />
+          </MuiTooltip>
+        </Box>
         {sortedData.map((activity, idx) => {
           const changePercent = activity.baseline ? (activity.impact / activity.baseline * 100) : 0;
           const isIncrease = activity.impact > 0;
@@ -757,74 +810,115 @@ function Analysis() {
 
         {/* Tab 1: Project-level Analysis */}
         <TabPanel value={tabValue} index={0}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Analysis Parameters
-                  </Typography>
+          {!projectResults && !projectAnalysisLoading ? (
+            <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
+              <Grid item xs={12} md={5}>
+                <Card sx={{ mb: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Analysis Parameters
+                    </Typography>
 
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Select Project</InputLabel>
-                    <Select
-                      value={selectedProject}
-                      label="Select Project"
-                      onChange={(e) => setSelectedProject(e.target.value)}
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel>Select Project</InputLabel>
+                      <Select
+                        value={selectedProject}
+                        label="Select Project"
+                        onChange={(e) => setSelectedProject(e.target.value)}
+                      >
+                        {projects.map((project) => (
+                          <MenuItem key={project.project_id} value={project.project_id}>
+                            {project.project_name || project.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                        <InputLabel sx={{ position: 'relative', transform: 'none', mb: 0.5 }}>Impact Method</InputLabel>
+                        <MuiTooltip title="Methodology for calculating environmental impact (e.g., IPCC 2013 GWP100)." arrow>
+                          <HelpIcon sx={{ fontSize: 16, ml: 1, color: 'text.disabled', cursor: 'help' }} />
+                        </MuiTooltip>
+                      </Box>
+                      <Select
+                        value={selectedMethod}
+                        onChange={(e) => setSelectedMethod(e.target.value)}
+                        displayEmpty
+                      >
+
+                        {impactMethods.map((method, idx) => (
+                          <MenuItem key={idx} value={JSON.stringify(method.method)}>
+                            {method.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="caption" color="text.secondary" gutterBottom>
+                        Monte Carlo Iterations
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <ToggleButtonGroup
+                          value={iterations}
+                          exclusive
+                          onChange={(e, newVal) => newVal && setIterations(newVal)}
+                          size="small"
+                          aria-label="iteration presets"
+                        >
+                          <ToggleButton value={100}>Quick (100)</ToggleButton>
+                          <ToggleButton value={1000}>Std (1k)</ToggleButton>
+                          <ToggleButton value={10000}>Robust (10k)</ToggleButton>
+                        </ToggleButtonGroup>
+                        <TextField
+                          type="number"
+                          value={iterations}
+                          onChange={(e) => setIterations(parseInt(e.target.value) || 0)}
+                          size="small"
+                          sx={{ width: 100 }}
+                          inputProps={{ min: 10, step: 100 }}
+                        />
+                      </Box>
+                      {iterations < 100 && (
+                        <Alert severity="warning" sx={{ mt: 1, py: 0 }}>
+                          Results may be unstable
+                        </Alert>
+                      )}
+                      <Typography variant="caption" color="text.secondary">
+                        More iterations = higher accuracy but slower
+                      </Typography>
+                    </Box>
+
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      startIcon={<CalculateIcon />}
+                      onClick={runProjectAnalysis}
+                      disabled={!selectedProject}
                     >
-                      {projects.map((project) => (
-                        <MenuItem key={project.project_id} value={project.project_id}>
-                          {project.project_name || project.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                      Run Analysis
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
 
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Impact Method (Optional)</InputLabel>
-                    <Select
-                      value={selectedMethod}
-                      label="Impact Method (Optional)"
-                      onChange={(e) => setSelectedMethod(e.target.value)}
-                      displayEmpty
-                    >
-
-                      {impactMethods.map((method, idx) => (
-                        <MenuItem key={idx} value={JSON.stringify(method.method)}>
-                          {method.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <TextField
-                    fullWidth
-                    label="Monte Carlo Iterations"
-                    type="number"
-                    value={iterations}
-                    onChange={(e) => setIterations(parseInt(e.target.value))}
-                    inputProps={{ min: 100, max: 10000, step: 100 }}
-                    sx={{ mb: 2 }}
-                    helperText="More iterations = more accurate but slower"
-                  />
-
-                  <Button
-                    fullWidth
-                    variant="contained"
-                    startIcon={projectAnalysisLoading ? <CircularProgress size={20} /> : <CalculateIcon />}
-                    onClick={runProjectAnalysis}
-                    disabled={projectAnalysisLoading || !selectedProject}
-                  >
-                    {projectAnalysisLoading ? "Running..." : "Run Analysis"}
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={8}>
-              {projectAnalysisLoading ? (
+              <Grid item xs={12} md={7}>
                 <Card>
                   <CardContent sx={{ textAlign: "center", py: 8 }}>
+                    <AssessmentIcon sx={{ fontSize: 80, color: "text.secondary", mb: 2 }} />
+                    <Typography variant="h6" color="text.secondary">
+                      Select parameters and run analysis
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          ) : (
+            <Box sx={{ width: '100%' }}>
+              {projectAnalysisLoading ? (
+                <Card sx={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CardContent sx={{ textAlign: "center" }}>
                     <CircularProgress size={60} />
                     <Typography variant="h6" sx={{ mt: 2 }}>
                       Running Monte Carlo Simulation...
@@ -834,45 +928,72 @@ function Analysis() {
                     </Typography>
                   </CardContent>
                 </Card>
-              ) : projectResults ? (
-                <Box>
-                  <Card sx={{ mb: 2 }}>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom>
-                        Distribution of Results
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {iterations} Monte Carlo iterations
-                      </Typography>
-                      {renderDistributionChart(projectResults)}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom>
-                        Statistical Summary
-                      </Typography>
-                      {renderStatistics(projectResults)}
-                    </CardContent>
-                  </Card>
-                </Box>
               ) : (
                 <Card>
-                  <CardContent sx={{ textAlign: "center", py: 8 }}>
-                    <AssessmentIcon sx={{ fontSize: 80, color: "text.secondary", mb: 2 }} />
-                    <Typography variant="h6" color="text.secondary">
-                      Select parameters and run analysis
-                    </Typography>
+                  <CardContent>
+                    {/* Header with Edit Button */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="h5">Analysis Results</Typography>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => setProjectResults(null)}
+                        startIcon={<AssessmentIcon />}
+                      >
+                        New Analysis
+                      </Button>
+                    </Box>
+
+                    <Grid container spacing={4}>
+                      <Grid item xs={12} md={3}>
+                        <Typography variant="h6" gutterBottom color="text.secondary" sx={{ fontSize: '1rem' }}>Statistical Summary</Typography>
+                        {renderStatistics(projectResults)}
+                      </Grid>
+
+                      {/* Right: Chart */}
+                      <Grid item xs={12} md={9}>
+                        {renderDistributionChart(projectResults)}
+                      </Grid>
+                    </Grid>
+
+                    <Divider sx={{ my: 3 }} />
+
+                    {/* Footer: Next Steps */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                      <Box>
+                        <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                          Next Steps
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Refine your analysis or export the data.
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 2 }}>
+                        <Button
+                          variant="outlined"
+                          endIcon={<ArrowForwardIcon />}
+                          onClick={() => setTabValue(2)} // Switch to Sensitivity
+                        >
+                          Run Sensitivity Analysis
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          onClick={() => alert("Export feature coming soon!")}
+                        >
+                          Export Results
+                        </Button>
+                      </Box>
+                    </Box>
                   </CardContent>
                 </Card>
               )}
-            </Grid>
-          </Grid>
-        </TabPanel>
+            </Box>
+          )
+          }
+        </TabPanel >
 
         {/* Tab 2: Product-level Analysis */}
-        <TabPanel value={tabValue} index={1}>
+        < TabPanel value={tabValue} index={1} >
           <Grid container spacing={3}>
             <Grid item xs={12} md={4}>
               <Card>
@@ -1031,10 +1152,10 @@ function Analysis() {
               )}
             </Grid>
           </Grid>
-        </TabPanel>
+        </TabPanel >
 
         {/* Tab 3: Sensitivity Analysis */}
-        <TabPanel value={tabValue} index={2}>
+        < TabPanel value={tabValue} index={2} >
           <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' }, pr: 3 }}>
             {/* Left Side: Graph and Analytics */}
             <Box sx={{ flex: '0 0 60%', minWidth: 0 }}>
@@ -1381,10 +1502,10 @@ function Analysis() {
               </Box>
             </Box>
           </Box>
-        </TabPanel>
+        </TabPanel >
 
         {/* Tab 4: LCA Product Sensitivity Analysis */}
-        <TabPanel value={tabValue} index={3}>
+        < TabPanel value={tabValue} index={3} >
           <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' }, pr: 3 }}>
             {/* Left Side: Graph and Analytics */}
             <Box sx={{ flex: '0 0 60%', minWidth: 0 }}>
@@ -1659,10 +1780,10 @@ function Analysis() {
               </Box>
             </Box>
           </Box>
-        </TabPanel>
+        </TabPanel >
 
         {/* Tab 4: Supply Chain Map */}
-        <TabPanel value={tabValue} index={4}>
+        < TabPanel value={tabValue} index={4} >
           <Grid container spacing={3}>
             <Grid item xs={12} md={4}>
               <Card>
@@ -1712,8 +1833,8 @@ function Analysis() {
               )}
             </Grid>
           </Grid>
-        </TabPanel>
-      </Box>
+        </TabPanel >
+      </Box >
     );
   } catch (err) {
     console.error("Render error:", err);

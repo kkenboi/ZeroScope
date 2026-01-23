@@ -746,6 +746,74 @@ class BW2LCA:
                 'error': f"{type(e).__name__}: {str(e)}",
                 'traceback': traceback.format_exc()
             }
+
+    def run_monte_carlo_simulation(self, activities_list, iterations, impact_method):
+        """
+        Run Monte Carlo simulation efficiently for multiple activities.
+        
+        Args:
+            activities_list: list of dicts {'database': str, 'code': str, 'amount': float}
+            iterations: number of iterations
+            impact_method: impact assessment method tuple
+        """
+        try:
+            bd.projects.set_current(self.PROJECT_NAME)
+            
+            # 1. Build Functional Unit
+            functional_unit = {}
+            
+            for item in activities_list:
+                db_name = item.get('database')
+                code = item.get('code')
+                amount = item.get('amount', 0.0)
+                
+                if not db_name or not code:
+                    continue
+                    
+                if db_name not in bd.databases:
+                    continue
+                    
+                db = bd.Database(db_name)
+                act = db.get(code)
+                
+                if act:
+                    functional_unit[act] = float(amount)
+            
+            if not functional_unit:
+                return {
+                    'success': False,
+                    'error': 'No valid activities found to simulate'
+                }
+            
+            # 2. Initialize Monte Carlo LCA - THIS IS THE KEY OPTIMIZATION
+            # We initialize ONCE, which loads the heavy matrices (2GB+)
+            # BW2.5 uses LCA(..., use_distributions=True) instead of MonteCarloLCA
+            mc = bc.LCA(functional_unit, impact_method, use_distributions=True)
+            mc.lci()
+            mc.lcia()
+            
+            # 3. Iterate
+            results = []
+            
+            # Append first result
+            results.append(float(mc.score))
+            
+            # Iterate for remaining
+            for _ in range(iterations - 1):
+                next(mc)
+                results.append(float(mc.score))
+            
+            return {
+                'success': True,
+                'results': results
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Monte Carlo Error: {str(e)}",
+                'traceback': traceback.format_exc()
+            }
     
     def calculate_activity_impact(self, database_name, activity_code, amount=1.0, impact_method=None):
         """

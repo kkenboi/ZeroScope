@@ -29,14 +29,10 @@ export const useSidebar = () => {
 }
 
 const Layout = ({ children }) => {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   const theme = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
-
-  const handleToggleCollapse = () => {
-    setCollapsed(!collapsed)
-  }
 
   const menuItems = [
     {
@@ -63,10 +59,18 @@ const Layout = ({ children }) => {
 
   const drawer = (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Box sx={{ p: collapsed ? 1 : 3, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Box sx={{
+        height: 80,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderBottom: "1px solid",
+        borderColor: "divider",
+        mb: 1
+      }}>
         {!collapsed ? (
           <Typography
-            variant="h4"
+            variant="h5"
             component="div"
             sx={{
               fontWeight: 700,
@@ -83,7 +87,7 @@ const Layout = ({ children }) => {
             sx={{
               fontWeight: 700,
               color: "primary.main",
-              fontSize: "1.8rem",
+              fontSize: "1.5rem",
             }}
           >
             ZS
@@ -135,30 +139,7 @@ const Layout = ({ children }) => {
           </ListItem>
         ))}
       </List>
-      <Box sx={{ p: collapsed ? 1 : 2 }}>
-        <ListItemButton
-          onClick={handleToggleCollapse}
-          sx={{
-            borderRadius: 1.5,
-            py: 1,
-            px: collapsed ? 1 : 2,
-            minHeight: 40,
-            justifyContent: collapsed ? "center" : "flex-start",
-            "&:hover": {
-              backgroundColor: "#F9FAFB",
-            },
-          }}
-        >
-          <ListItemText
-            primary={collapsed ? "→" : "← Collapse"}
-            primaryTypographyProps={{
-              fontSize: collapsed ? "1rem" : "0.875rem",
-              textAlign: collapsed ? "center" : "left",
-              color: "text.secondary",
-            }}
-          />
-        </ListItemButton>
-      </Box>
+      {/* Footer / Credits could go here */}
     </Box>
   )
 
@@ -178,7 +159,10 @@ const Layout = ({ children }) => {
           sx={{
             width: { md: currentDrawerWidth },
             flexShrink: { md: 0 },
+            transition: "width 0.3s ease",
           }}
+          onMouseEnter={() => setCollapsed(false)}
+          onMouseLeave={() => setCollapsed(true)}
         >
 
           {/* Desktop Drawer */}
@@ -190,6 +174,7 @@ const Layout = ({ children }) => {
                 boxSizing: "border-box",
                 width: currentDrawerWidth,
                 transition: "width 0.3s ease",
+                overflowX: 'hidden',
               },
             }}
             open

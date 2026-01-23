@@ -1227,24 +1227,31 @@ class UncertaintyAnalysisViewSet(viewsets.ViewSet):
             else:
                 impact_method = tuple(impact_method)
             
-            # Run Monte Carlo for each activity and sum results
-            all_results = []
+            # Run Monte Carlo simulation efficiently
+            # 1. Collect all activities and quantities
+            activities_list = []
+            for activity in lca_activities:
+                activities_list.append({
+                    'database': activity.bw2_database,
+                    'code': activity.bw2_activity_code,
+                    'amount': float(activity.quantity)
+                })
+                
+            # 2. Run simulation
+            simulation_result = bw2Instance.run_monte_carlo_simulation(
+                activities_list=activities_list,
+                iterations=iterations,
+                impact_method=impact_method
+            )
             
-            for iteration in range(iterations):
-                total_impact = 0
+            if not simulation_result['success']:
+                return Response({
+                    'success': False,
+                    'error': simulation_result.get('error', 'Simulation failed'),
+                    'traceback': simulation_result.get('traceback')
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
-                for activity in lca_activities:
-                    result = bw2Instance.run_monte_carlo_single(
-                        database_name=activity.bw2_database,
-                        activity_code=activity.bw2_activity_code,
-                        quantity=float(activity.quantity),
-                        impact_method=impact_method
-                    )
-                    
-                    if result['success']:
-                        total_impact += result['impact']
-                
-                all_results.append(total_impact / 1000)  # Convert to tCO2e
+            all_results = [r / 1000 for r in simulation_result['results']]  # Convert to tCO2e
             
             # Calculate statistics
             results_array = np.array(all_results)
@@ -1316,19 +1323,27 @@ class UncertaintyAnalysisViewSet(viewsets.ViewSet):
             else:
                 impact_method = tuple(impact_method)
             
-            # Run Monte Carlo iterations
-            all_results = []
+            # Run Monte Carlo simulation efficiently
+            activities_list = [{
+                'database': database_name,
+                'code': activity_code,
+                'amount': float(quantity)
+            }]
             
-            for iteration in range(iterations):
-                result = bw2Instance.run_monte_carlo_single(
-                    database_name=database_name,
-                    activity_code=activity_code,
-                    quantity=float(quantity),
-                    impact_method=impact_method
-                )
+            simulation_result = bw2Instance.run_monte_carlo_simulation(
+                activities_list=activities_list,
+                iterations=iterations,
+                impact_method=impact_method
+            )
+            
+            if not simulation_result['success']:
+                return Response({
+                    'success': False,
+                    'error': simulation_result.get('error', 'Simulation failed'),
+                    'traceback': simulation_result.get('traceback')
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
-                if result['success']:
-                    all_results.append(result['impact'] / 1000)  # Convert to tCO2e
+            all_results = [r / 1000 for r in simulation_result['results']]  # Convert to tCO2e
             
             # Calculate statistics
             results_array = np.array(all_results)
