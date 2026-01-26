@@ -448,7 +448,7 @@ function Analysis() {
 
         console.log(`Requesting calculation for quantity ${quantity}:`, payload);
 
-        const response = await fetch("/api/lca/calculate/", {
+        const response = await fetch("/api/calculate-lca/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -508,7 +508,7 @@ function Analysis() {
     const stats = results.statistics;
 
     return (
-      <Box sx={{ height: 400, width: '100%' }}>
+      <Box sx={{ height: 400, width: 800 }}>
         <Box sx={{ mb: 1, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <Typography variant="h6">Distribution of Results</Typography>
           <Typography variant="caption" color={iterations < 100 ? "warning.main" : "text.secondary"}>
@@ -810,6 +810,12 @@ function Analysis() {
 
         {/* Tab 1: Project-level Analysis */}
         <TabPanel value={tabValue} index={0}>
+          <Alert severity="info" variant="outlined" sx={{ mb: 3, borderLeft: '4px solid #0288d1', bgcolor: 'info.50' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Uncertainty Analysis - Project Level</Typography>
+            <Typography variant="body2">
+              Assess the reliability of your project's total footprint. By running thousands of simulations, we can determine the range of likely outcomes based on data uncertainty, giving you a "confidence score" in your final results.
+            </Typography>
+          </Alert>
           {!projectResults && !projectAnalysisLoading ? (
             <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
               <Grid item xs={12} md={5}>
@@ -902,17 +908,6 @@ function Analysis() {
                   </CardContent>
                 </Card>
               </Grid>
-
-              <Grid item xs={12} md={7}>
-                <Card>
-                  <CardContent sx={{ textAlign: "center", py: 8 }}>
-                    <AssessmentIcon sx={{ fontSize: 80, color: "text.secondary", mb: 2 }} />
-                    <Typography variant="h6" color="text.secondary">
-                      Select parameters and run analysis
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
             </Grid>
           ) : (
             <Box sx={{ width: '100%' }}>
@@ -933,7 +928,9 @@ function Analysis() {
                   <CardContent>
                     {/* Header with Edit Button */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                      <Typography variant="h5">Analysis Results</Typography>
+                      <Typography variant="h5">
+                        Analysis Results: {projects.find(p => p.project_id === selectedProject)?.project_name || projects.find(p => p.project_id === selectedProject)?.name}
+                      </Typography>
                       <Button
                         variant="outlined"
                         size="small"
@@ -993,121 +990,153 @@ function Analysis() {
         </TabPanel >
 
         {/* Tab 2: Product-level Analysis */}
-        < TabPanel value={tabValue} index={1} >
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Product Parameters
-                  </Typography>
-
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Database</InputLabel>
-                    <Select
-                      value={selectedDatabase || ""}
-                      label="Database"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setSelectedDatabase(value);
-                        setSelectedActivity("");
-                        if (value) {
-                          loadActivitiesForDatabase(value);
-                        }
-                      }}
-                    >
-                      {!databases || databases.length === 0 ? (
-                        <MenuItem value="" disabled>No databases available</MenuItem>
-                      ) : (
-                        databases.map((db, idx) => {
-                          const dbName = typeof db === 'string' ? db : (db?.name || db);
-                          return (
-                            <MenuItem key={`product-db-${idx}`} value={dbName}>
-                              {dbName}
-                            </MenuItem>
-                          );
-                        })
-                      )}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Activity</InputLabel>
-                    <Select
-                      value={selectedActivity || ""}
-                      label="Activity"
-                      onChange={(e) => setSelectedActivity(e.target.value)}
-                      disabled={!selectedDatabase}
-                    >
-                      {!activities || activities.length === 0 ? (
-                        <MenuItem value="" disabled>
-                          {selectedDatabase ? "Loading activities..." : "Select a database first"}
-                        </MenuItem>
-                      ) : (
-                        activities.map((activity) => (
-                          <MenuItem key={activity.code} value={activity.code}>
-                            {activity.name} ({activity.location})
-                          </MenuItem>
-                        ))
-                      )}
-                    </Select>
-                  </FormControl>
-
-                  <TextField
-                    fullWidth
-                    label="Quantity"
-                    type="number"
-                    value={activityQuantity}
-                    onChange={(e) => setActivityQuantity(e.target.value)}
-                    inputProps={{ min: 0, step: "any" }}
-                    sx={{ mb: 2 }}
-                  />
-
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Impact Method (Optional)</InputLabel>
-                    <Select
-                      value={selectedMethod}
-                      label="Impact Method (Optional)"
-                      onChange={(e) => setSelectedMethod(e.target.value)}
-                      displayEmpty
-                    >
-
-                      {impactMethods.map((method, idx) => (
-                        <MenuItem key={idx} value={JSON.stringify(method.method)}>
-                          {method.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <TextField
-                    fullWidth
-                    label="Monte Carlo Iterations"
-                    type="number"
-                    value={iterations}
-                    onChange={(e) => setIterations(parseInt(e.target.value))}
-                    inputProps={{ min: 100, max: 10000, step: 100 }}
-                    sx={{ mb: 2 }}
-                    helperText="More iterations = more accurate but slower"
-                  />
-
-                  <Button
-                    fullWidth
-                    variant="contained"
-                    startIcon={productAnalysisLoading ? <CircularProgress size={20} /> : <CalculateIcon />}
-                    onClick={runProductAnalysis}
-                    disabled={productAnalysisLoading || !selectedDatabase || !selectedActivity}
-                  >
-                    {productAnalysisLoading ? "Running..." : "Run Analysis"}
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={8}>
-              {productAnalysisLoading ? (
+        < TabPanel value={tabValue} index={1}>
+          <Alert severity="info" variant="outlined" sx={{ mb: 3, borderLeft: '4px solid #0288d1', bgcolor: 'info.50' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Uncertainty Analysis - Product Level</Typography>
+            <Typography variant="body2">
+              Explore the uncertainty level of a specific material or process. This helps you understand if a product's footprint is highly variable or consistently predictable based on the source data.
+            </Typography>
+          </Alert>
+          {!productResults && !productAnalysisLoading ? (
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={4}>
                 <Card>
-                  <CardContent sx={{ textAlign: "center", py: 8 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Product Parameters
+                    </Typography>
+
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel>Database</InputLabel>
+                      <Select
+                        value={selectedDatabase || ""}
+                        label="Database"
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSelectedDatabase(value);
+                          setSelectedActivity("");
+                          if (value) {
+                            loadActivitiesForDatabase(value);
+                          }
+                        }}
+                      >
+                        {!databases || databases.length === 0 ? (
+                          <MenuItem value="" disabled>No databases available</MenuItem>
+                        ) : (
+                          databases.map((db, idx) => {
+                            const dbName = typeof db === 'string' ? db : (db?.name || db);
+                            return (
+                              <MenuItem key={`product-db-${idx}`} value={dbName}>
+                                {dbName}
+                              </MenuItem>
+                            );
+                          })
+                        )}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel>Activity</InputLabel>
+                      <Select
+                        value={selectedActivity || ""}
+                        label="Activity"
+                        onChange={(e) => setSelectedActivity(e.target.value)}
+                        disabled={!selectedDatabase}
+                      >
+                        {!activities || activities.length === 0 ? (
+                          <MenuItem value="" disabled>
+                            {selectedDatabase ? "Loading activities..." : "Select a database first"}
+                          </MenuItem>
+                        ) : (
+                          activities.map((activity) => (
+                            <MenuItem key={activity.code} value={activity.code}>
+                              {activity.name} ({activity.location})
+                            </MenuItem>
+                          ))
+                        )}
+                      </Select>
+                    </FormControl>
+
+                    <TextField
+                      fullWidth
+                      label="Quantity"
+                      type="number"
+                      value={activityQuantity}
+                      onChange={(e) => setActivityQuantity(e.target.value)}
+                      inputProps={{ min: 0, step: "any" }}
+                      sx={{ mb: 2 }}
+                    />
+
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel>Impact Method (Optional)</InputLabel>
+                      <Select
+                        value={selectedMethod}
+                        label="Impact Method (Optional)"
+                        onChange={(e) => setSelectedMethod(e.target.value)}
+                        displayEmpty
+                      >
+
+                        {impactMethods.map((method, idx) => (
+                          <MenuItem key={idx} value={JSON.stringify(method.method)}>
+                            {method.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="caption" color="text.secondary" gutterBottom>
+                        Monte Carlo Iterations
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <ToggleButtonGroup
+                          value={iterations}
+                          exclusive
+                          onChange={(e, newVal) => newVal && setIterations(newVal)}
+                          size="small"
+                          aria-label="iteration presets"
+                        >
+                          <ToggleButton value={100}>Quick (100)</ToggleButton>
+                          <ToggleButton value={1000}>Std (1k)</ToggleButton>
+                          <ToggleButton value={10000}>Robust (10k)</ToggleButton>
+                        </ToggleButtonGroup>
+                        <TextField
+                          type="number"
+                          value={iterations}
+                          onChange={(e) => setIterations(parseInt(e.target.value) || 0)}
+                          size="small"
+                          sx={{ width: 100 }}
+                          inputProps={{ min: 10, step: 100 }}
+                        />
+                      </Box>
+                      {iterations < 100 && (
+                        <Alert severity="warning" sx={{ mt: 1, py: 0 }}>
+                          Results may be unstable
+                        </Alert>
+                      )}
+                      <Typography variant="caption" color="text.secondary">
+                        More iterations = higher accuracy but slower
+                      </Typography>
+                    </Box>
+
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      startIcon={productAnalysisLoading ? <CircularProgress size={20} /> : <CalculateIcon />}
+                      onClick={runProductAnalysis}
+                      disabled={productAnalysisLoading || !selectedDatabase || !selectedActivity}
+                    >
+                      {productAnalysisLoading ? "Running..." : "Run Analysis"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          ) : (
+            <Box sx={{ width: '100%' }}>
+              {productAnalysisLoading ? (
+                <Card sx={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CardContent sx={{ textAlign: "center" }}>
                     <CircularProgress size={60} />
                     <Typography variant="h6" sx={{ mt: 2 }}>
                       Running Monte Carlo Simulation...
@@ -1117,45 +1146,77 @@ function Analysis() {
                     </Typography>
                   </CardContent>
                 </Card>
-              ) : productResults ? (
-                <Box>
-                  <Card sx={{ mb: 2 }}>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom>
-                        Distribution of Results
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {iterations} Monte Carlo iterations for {activityQuantity} unit(s)
-                      </Typography>
-                      {renderDistributionChart(productResults)}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom>
-                        Statistical Summary
-                      </Typography>
-                      {renderStatistics(productResults)}
-                    </CardContent>
-                  </Card>
-                </Box>
               ) : (
                 <Card>
-                  <CardContent sx={{ textAlign: "center", py: 8 }}>
-                    <ScienceIcon sx={{ fontSize: 80, color: "text.secondary", mb: 2 }} />
-                    <Typography variant="h6" color="text.secondary">
-                      Select product and run analysis
-                    </Typography>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="h5">
+                        Analysis Results: {activities.find(a => a.code === selectedActivity)?.name}
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => setProductResults(null)}
+                        startIcon={<AssessmentIcon />}
+                      >
+                        New Analysis
+                      </Button>
+                    </Box>
+
+                    <Grid container spacing={4}>
+                      <Grid item xs={12} md={3}>
+                        <Typography variant="h6" gutterBottom color="text.secondary" sx={{ fontSize: '1rem' }}>Statistical Summary</Typography>
+                        {renderStatistics(productResults)}
+                      </Grid>
+
+                      <Grid item xs={12} md={9}>
+                        {renderDistributionChart(productResults)}
+                      </Grid>
+                    </Grid>
+
+                    <Divider sx={{ my: 3 }} />
+
+                    {/* Footer: Next Steps */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                      <Box>
+                        <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                          Next Steps
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Refine your analysis or export the data.
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 2 }}>
+                        <Button
+                          variant="outlined"
+                          endIcon={<ArrowForwardIcon />}
+                          onClick={() => setTabValue(3)} // Switch to Sensitivity - Product
+                        >
+                          Run Sensitivity Analysis
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          onClick={() => alert("Export feature coming soon!")}
+                        >
+                          Export Results
+                        </Button>
+                      </Box>
+                    </Box>
                   </CardContent>
                 </Card>
               )}
-            </Grid>
-          </Grid>
+            </Box>
+          )}
         </TabPanel >
 
         {/* Tab 3: Sensitivity Analysis */}
         < TabPanel value={tabValue} index={2} >
+          <Alert severity="info" variant="outlined" sx={{ mb: 3, borderLeft: '4px solid #0288d1', bgcolor: 'info.50' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Sensitivity Analysis - Project Level</Typography>
+            <Typography variant="body2">
+              Identify the primary "drivers" of your footprint. By varying activity quantities, you can see which specific projects or materials have the biggest impact on your total results, helping you target where reduction efforts will be most effective.
+            </Typography>
+          </Alert>
           <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' }, pr: 3 }}>
             {/* Left Side: Graph and Analytics */}
             <Box sx={{ flex: '0 0 60%', minWidth: 0 }}>
@@ -1506,6 +1567,12 @@ function Analysis() {
 
         {/* Tab 4: LCA Product Sensitivity Analysis */}
         < TabPanel value={tabValue} index={3} >
+          <Alert severity="info" variant="outlined" sx={{ mb: 3, borderLeft: '4px solid #0288d1', bgcolor: 'info.50' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Sensitivity Analysis - Product Level</Typography>
+            <Typography variant="body2">
+              Model how scaling production affects environmental impact. This analysis shows how sensitive your results are to changes in quantity, highlighting potential "tipping points" in your supply chain.
+            </Typography>
+          </Alert>
           <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' }, pr: 3 }}>
             {/* Left Side: Graph and Analytics */}
             <Box sx={{ flex: '0 0 60%', minWidth: 0 }}>
@@ -1784,6 +1851,12 @@ function Analysis() {
 
         {/* Tab 4: Supply Chain Map */}
         < TabPanel value={tabValue} index={4} >
+          <Alert severity="info" variant="outlined" sx={{ mb: 3, borderLeft: '4px solid #0288d1', bgcolor: 'info.50' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Supply Chain Map</Typography>
+            <Typography variant="body2">
+              Visualize the global geographic distribution of your supply chain. Identify regional hotspots and understand the physical reach of your activities and their associated emissions.
+            </Typography>
+          </Alert>
           <Grid container spacing={3}>
             <Grid item xs={12} md={4}>
               <Card>
