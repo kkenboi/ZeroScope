@@ -50,6 +50,44 @@ class BW2LCA:
                 'success': False,
                 'error': str(e)
             }
+
+    def check_bw2io_version(self):
+        """Check if bw2io version is compatible with ecoinvent 3.9.1"""
+        try:
+            from packaging import version
+            current_version = version.parse(bi.__version__)
+            required_version = version.parse("0.8.8")
+            
+            if current_version < required_version:
+                return {
+                    'compatible': False,
+                    'current': str(current_version),
+                    'required': "0.8.8",
+                    'message': f"bw2io version {current_version} is too old. Please upgrade to at least 0.8.8 using 'pip install --upgrade bw2io'."
+                }
+            return {'compatible': True, 'current': str(current_version)}
+        except Exception:
+            # Fallback if packaging not installed or other error
+            return {'compatible': True, 'current': bi.__version__, 'warning': 'Could not verify version compatibility'}
+
+    def hard_reset_project(self):
+        """
+        Completely delete the project and start fresh.
+        """
+        try:
+            current_project = bd.projects.current
+            if current_project != self.PROJECT_NAME:
+                bd.projects.set_current(self.PROJECT_NAME)
+                
+            bd.projects.delete_project(self.PROJECT_NAME, delete_dir=True)
+            
+            # Re-create
+            bd.projects.set_current(self.PROJECT_NAME)
+            bi.bw2setup()
+            
+            return {'success': True, 'message': 'Project hard reset complete and biosphere re-installed.'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
     
     def list_databases(self):
         """List all databases in the current project"""
@@ -139,9 +177,81 @@ class BW2LCA:
                         'success': False,
                         'error': 'Import failed due to database conflict. This can happen if a previous import was interrupted. Try deleting all ecoinvent databases and importing again, or reset the Brightway2 project data.'
                     }
-                
-                # Re-raise other errors
-                raise import_error
+
+                # Handle "Can't find flow" error (biosphere mismatch)
+                if "Can't find flow" in error_msg:
+                    if progress_callback:
+                        progress_callback({
+                            'status': 'warning',
+                            'message': 'Biosphere mismatch detected. Reinstalling default biosphere data...',
+                            'progress': 15
+                        })
+                    
+                    print("Biosphere mismatch detected. Re-running bw2setup...")
+                    try:
+                        # Delete existing biosphere to force update
+                        if "biosphere3" in bd.databases:
+                            del bd.databases["biosphere3"]
+                        
+                        # Run bw2setup but handle "already exists" errors for methods
+                        try:
+                            bi.bw2setup()
+                        except Exception as setup_error:
+                            if "already exists" in str(setup_error):
+                                print("Note: Some methods already exist. Proceeding...")
+                            else:
+                                raise setup_error
+                        
+                        # Retry import once
+                        if progress_callback:
+                            progress_callback({
+                                'status': 'downloading',
+                                'message': 'Biosphere updated. Retrying ecoinvent import...',
+                                'progress': 20
+                            })
+                        
+                        # Ensure ecoinvent databases are deleted before retry
+                        # We must also delete the auxiliary biosphere database to avoid "Overwrite? [y/n]" prompts which cause hangs
+                        biosphere_db_name = f'ecoinvent-{version}-biosphere'
+                        
+                        if db_name in bd.databases:
+                            print(f"Deleting partial database {db_name}...")
+                            del bd.databases[db_name]
+                        
+                        if biosphere_db_name in bd.databases:
+                            print(f"Deleting partial database {biosphere_db_name}...")
+                            del bd.databases[biosphere_db_name]
+
+                        bi.import_ecoinvent_release(
+                            version=version,
+                            system_model=system_model,
+                            username=username,
+                            password=password
+                        )
+                    except Exception as retry_error:
+                        if progress_callback:
+                            progress_callback({
+                                'status': 'error',
+                                'message': f'Import failed after biosphere update: {str(retry_error)}',
+                                'progress': 0
+                            })
+                        return {
+                            'success': False,
+                            'error': f'Failed to fix biosphere mismatch: {str(retry_error)}. Please try "Reset Project" from the settings.'
+                        }
+                        
+                # Check for version compatibility if "Can't understand elementary flow identifier"
+                if "Can't understand elementary flow identifier" in error_msg:
+                    version_check = self.check_bw2io_version()
+                    if not version_check['compatible']:
+                        msg = f"{version_check['message']} (Error: {error_msg})"
+                        if progress_callback:
+                             progress_callback({'status': 'error', 'message': msg, 'progress': 0})
+                        return {'success': False, 'error': msg}
+                        
+                else:
+                    # Re-raise other errors
+                    raise import_error
             
             if progress_callback:
                 progress_callback({
@@ -561,10 +671,16 @@ class BW2LCA:
                     continue
                 
                 # Create exchange
+                # AUTO-CORRECT: If input is from a biosphere database, force type to 'biosphere'
+                is_biosphere_db = 'biosphere' in input_db_name.lower()
+                current_type = exchange_type
+                if is_biosphere_db and current_type != 'biosphere':
+                    current_type = 'biosphere'
+
                 new_activity.new_exchange(
                     input=input_activity.key,
                     amount=amount,
-                    type=exchange_type,
+                    type=current_type,
                     unit=input_activity.get('unit', 'Unknown')
                 ).save()
             
@@ -815,6 +931,26 @@ class BW2LCA:
                 'traceback': traceback.format_exc()
             }
     
+    def get_default_method(self):
+        """
+        Find the best available default method (GWP 100)
+        Prioritizes ecoinvent-specific methods if available, then falls back to generic IPCC.
+        """
+        bd.projects.set_current(self.PROJECT_NAME)
+        
+        # 1. Try specific ecoinvent 3.9.1 IPCC 2021 (Most robust for this setup)
+        candidates = [m for m in bd.methods if "ecoinvent-3.9.1" in str(m) and "IPCC 2021" in str(m) and "GWP100" in str(m) and "no LT" in str(m)]
+        if candidates:
+            return candidates[0]
+            
+        # 2. Try generic IPCC 2021
+        candidates = [m for m in bd.methods if "IPCC 2021" in str(m) and "climate change" in str(m) and "GWP 100" in str(m)]
+        if candidates:
+            return candidates[0]
+            
+        # 3. Fallback to old default
+        return ('IPCC 2013', 'climate change', 'GWP 100a')
+
     def calculate_activity_impact(self, database_name, activity_code, amount=1.0, impact_method=None):
         """
         Calculate LCA impact for any activity in the database
@@ -823,7 +959,7 @@ class BW2LCA:
             database_name: Name of the Brightway2 database
             activity_code: Activity code
             amount: Quantity/amount of the activity
-            impact_method: Impact assessment method tuple (e.g., ('IPCC 2013', 'climate change', 'GWP 100a'))
+            impact_method: Impact assessment method tuple
         
         Returns:
             Dictionary with success status and impact value in kgCO₂e
@@ -847,9 +983,9 @@ class BW2LCA:
                     'error': f"Activity '{activity_code}' not found in database '{database_name}'"
                 }
             
-            # Use default method if not specified
+            # Use smart default method if not specified
             if not impact_method:
-                impact_method = ('IPCC 2013', 'climate change', 'GWP 100a')
+                impact_method = self.get_default_method()
             
             # Create functional unit
             functional_unit = {activity: float(amount)}
@@ -876,7 +1012,8 @@ class BW2LCA:
                 'impact': float(impact),  # Returns in kgCO2e
                 'activity_name': activity.get('name', ''),
                 'unit': activity.get('unit', ''),
-                'amount': amount
+                'amount': amount,
+                'method': str(impact_method) # Return method for debugging
             }
             
         except Exception as e:
@@ -959,10 +1096,18 @@ class BW2LCA:
                 if not input_activity:
                     continue
                 
+                # AUTO-CORRECT: If input is from a biosphere database, force type to 'biosphere'
+                # Check based on database name conventions or if keywords present
+                is_biosphere_db = 'biosphere' in input_db.lower()
+                
+                current_type = exc_type
+                if is_biosphere_db and current_type != 'biosphere':
+                    current_type = 'biosphere'
+                
                 activity.new_exchange(
                     input=input_activity.key,
                     amount=amount,
-                    type=exc_type,
+                    type=current_type,
                     unit=input_activity.get('unit', 'Unknown')
                 ).save()
             
@@ -981,3 +1126,38 @@ class BW2LCA:
                 'error': str(e),
                 'traceback': traceback.format_exc()
             }
+
+    def fix_custom_product_types(self, db_name="custom_products"):
+        """
+        Scan a custom database and fix exchange types.
+        Specifically, ensures that inputs from biosphere databases are typed as 'biosphere'
+        instead of 'technosphere', which causes NonsquareTechnosphere errors.
+        """
+        bd.projects.set_current(self.PROJECT_NAME)
+        try:
+            if db_name not in bd.databases:
+                return {'success': False, 'message': f"Database {db_name} not found"}
+            
+            db = bd.Database(db_name)
+            fixed_count = 0
+            
+            for act in db:
+                for exc in act.exchanges():
+                    # Check if it needs fixing
+                    input_db = exc.input['database']
+                    exc_type = exc['type']
+                    
+                    if 'biosphere' in input_db.lower() and exc_type != 'biosphere':
+                        # Fix it
+                        exc['type'] = 'biosphere'
+                        exc.save()
+                        fixed_count += 1
+            
+            return {
+                'success': True, 
+                'fixed_count': fixed_count,
+                'message': f"Fixed {fixed_count} exchanges in {db_name}"
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': str(e)}

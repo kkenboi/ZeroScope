@@ -27,7 +27,7 @@ urlpatterns = [
     path('calculate-lca/', calculate_lca, name='calculate_lca'),
     path('dashboard/stats/', dashboard_stats, name='dashboard_stats_all'),
     path('dashboard/stats/<uuid:project_id>/', dashboard_stats, name='dashboard_stats'),
-    path('reports/generate/<uuid:project_id>/', generate_report, name='generate_report'),
+    path('reports/generate/', generate_report, name='generate_report'),
     path('globe-data/<uuid:project_id>/', GlobeDataView.as_view(), name='globe_data'),
 ]
 

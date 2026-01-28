@@ -129,7 +129,6 @@ function Analysis() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log("Database response:", data); // Debug log
 
       if (data.success) {
         // Handle both array and object formats
@@ -139,7 +138,6 @@ function Analysis() {
         } else if (typeof data.databases === 'object' && data.databases !== null) {
           dbList = Object.keys(data.databases);
         }
-        console.log("Processed databases:", dbList); // Debug log
         setDatabases(dbList);
       } else {
         console.warn("Database API returned success=false");
@@ -155,8 +153,6 @@ function Analysis() {
     try {
       const response = await fetch("/api/brightway2/list_impact_methods/");
       const data = await response.json();
-      console.log("=== IMPACT METHODS DEBUG ===");
-      console.log("Total impact methods received from API:", data.methods?.length);
 
       if (data.success) {
         const allMethods = data.methods || [];
@@ -364,19 +360,11 @@ function Analysis() {
         payload.impact_method = method;
       }
 
-      console.log("=== SENSITIVITY ANALYSIS REQUEST ===");
-      console.log("URL: /api/sensitivity/project/");
-      console.log("Payload:", JSON.stringify(payload, null, 2));
-
       const response = await fetch("/api/sensitivity/project/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      console.log("Response status:", response.status);
-      console.log("Response URL:", response.url);
-      console.log("Response headers:", Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const contentType = response.headers.get("content-type");
@@ -399,7 +387,6 @@ function Analysis() {
       }
 
       const data = await response.json();
-      console.log("Success response:", data);
 
       if (data.success) {
         setSensitivityResults(data);
@@ -427,12 +414,6 @@ function Analysis() {
     try {
       const method = selectedMethod ? JSON.parse(selectedMethod) : null;
 
-      console.log("=== LCA PRODUCT SENSITIVITY ANALYSIS ===");
-      console.log("Database:", lcaSensitivityDatabase);
-      console.log("Activity:", lcaSensitivityActivity);
-      console.log("Quantities:", lcaSensitivityQuantities);
-      console.log("Impact method:", method);
-
       // Run analysis for each quantity sequentially to avoid backend concurrency issues
       const results = [];
       for (const quantity of lcaSensitivityQuantities) {
@@ -446,15 +427,12 @@ function Analysis() {
           payload.impact_method = method;
         }
 
-        console.log(`Requesting calculation for quantity ${quantity}:`, payload);
-
         const response = await fetch("/api/calculate-lca/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
 
-        console.log(`Response for quantity ${quantity}:`, response.status);
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -463,7 +441,6 @@ function Analysis() {
         }
 
         const data = await response.json();
-        console.log(`Success data for quantity ${quantity}:`, data);
 
         results.push({
           quantity,
@@ -472,8 +449,6 @@ function Analysis() {
       }
 
       results.sort((a, b) => a.quantity - b.quantity);
-
-      console.log("Final results:", results);
 
       const minResult = results[0];
       const maxResult = results[results.length - 1];

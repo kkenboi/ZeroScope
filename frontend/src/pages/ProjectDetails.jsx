@@ -28,6 +28,7 @@ import {
   Checkbox,
   FormControlLabel,
   useTheme,
+  Avatar,
 } from "@mui/material"
 import { BarChart } from "@mui/x-charts"
 import { DataGrid } from "@mui/x-data-grid"
@@ -37,6 +38,7 @@ import {
   Science as ScienceIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
+  TrendingUp as TrendingUpIcon,
 } from "@mui/icons-material"
 import LCAProductSearch from "../components/LCAProductSearch"
 
@@ -443,6 +445,40 @@ function ProjectDetails() {
     }
   }
 
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [tempProjectName, setTempProjectName] = useState("")
+  const [isSavingName, setIsSavingName] = useState(false)
+
+  const handleSaveProjectName = async () => {
+    if (!tempProjectName.trim()) return;
+
+    try {
+      setIsSavingName(true);
+      const response = await fetch(`/api/projects/${projectID}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: tempProjectName }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update project name');
+
+      const updatedProject = await response.json();
+      setProject(updatedProject);
+      setIsEditingName(false);
+    } catch (err) {
+      alert('Error updating project name: ' + err.message);
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const startEditingName = () => {
+    setTempProjectName(project.name);
+    setIsEditingName(true);
+  };
+
   if (loading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -474,55 +510,304 @@ function ProjectDetails() {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, width: '100%' }}>
       {/* Header */}
-      <Button onClick={() => navigate("/projects")} startIcon={<BackIcon />} sx={{ mb: 2 }}>
-        Back to Projects
-      </Button>
-
-      <Typography variant="h4">{project.name}</Typography>
-      <Typography>{project.description}</Typography>
-      <Typography variant="body2" color="text.secondary">
-        Project ID: {project.project_id}
-      </Typography>
-      <Typography variant="body2" color="text.secondary">
-        Created: {new Date(project.created_date).toLocaleDateString()}
-      </Typography>
-      <Typography variant="body2" color="text.secondary">
-        Last Modified: {new Date(project.last_modified).toLocaleDateString()}
-      </Typography>
-
-      <Divider sx={{ my: 3 }} />
-
-      {/* Add Activity Dialog trigger */}
-      <Box sx={{ my: 2 }}>
-        <Button
-          variant="contained"
-          onClick={() => {
-            setEditingActivityId(null);
-            setActivityType('emission_factor');
-            setNewActivity({
-              scope: 1,
-              activityName: "",
-              description: "",
-              quantity: "",
-              emissionFactorId: "",
-              scope3Category: "",
-              isRecurring: true,
-              periodStart: "",
-              periodEnd: ""
-            });
-            setDialogOpen(true);
-          }}
-        >
-          Add Emission Activity
+      <Box sx={{ mb: 3 }}>
+        <Button onClick={() => navigate("/projects")} startIcon={<BackIcon />} sx={{ mb: 2 }}>
+          Back to Projects
         </Button>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {isEditingName ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TextField
+                value={tempProjectName}
+                onChange={(e) => setTempProjectName(e.target.value)}
+                size="small"
+                autoFocus
+              />
+              <Button
+                variant="contained"
+                onClick={handleSaveProjectName}
+                disabled={isSavingName}
+              >
+                Save
+              </Button>
+              <Button onClick={() => setIsEditingName(false)}>Cancel</Button>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="h4">{project.name}</Typography>
+              <IconButton onClick={startEditingName} size="small">
+                <EditIcon />
+              </IconButton>
+            </Box>
+          )}
+        </Box>
+
+        <Typography sx={{ mt: 1 }}>{project.description}</Typography>
+        <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Created: {new Date(project.created_date).toLocaleDateString()}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Last Modified: {new Date(project.last_modified).toLocaleDateString()}
+          </Typography>
+        </Stack>
       </Box>
+
+      <Divider sx={{ mb: 3 }} />
+
+      <Grid container spacing={1}>
+        {/* Left Column: Scope Overview / Graph */}
+        <Grid item xs={12} md={4}>
+          <Card sx={{ height: '100%', width: 500 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2 }}>Scope Overview</Typography>
+              <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+                {[1, 2, 3].map(n => (
+                  <Chip
+                    key={n}
+                    label={`Scope ${n}`}
+                    sx={{
+                      bgcolor: selectedScopes.includes(n) ? theme.palette.scopes[`scope${n}`] : 'transparent',
+                      color: selectedScopes.includes(n) ? 'white' : 'text.primary',
+                      borderColor: theme.palette.scopes[`scope${n}`],
+                      '&:hover': {
+                        bgcolor: selectedScopes.includes(n) ? theme.palette.scopes[`scope${n}`] : `${theme.palette.scopes[`scope${n}`]}22`,
+                      }
+                    }}
+                    variant={selectedScopes.includes(n) ? 'filled' : 'outlined'}
+                    onClick={() => setSelectedScopes(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}
+                  />
+                ))}
+                <Chip label="Reset" onClick={() => setSelectedScopes([1, 2, 3])} variant="outlined" />
+              </Stack>
+
+              {(() => {
+                const totals = [1, 2, 3].map(n => {
+                  const s = (project.scopes || []).find(sc => sc.scope_number === n)
+                  return Number(s?.total_emissions_tco2e || 0)
+                })
+
+                const allLabels = ['Scope 1', 'Scope 2', 'Scope 3'];
+                // Use explicit colors that match the chips/theme
+                // Scope 1: #FF5252 (Red)
+                // Scope 2: #448AFF (Blue) 
+                // Scope 3: #69F0AE (Green) or similar from theme
+                const allSeries = [
+                  { label: 'Scope 1', data: [totals[0], 0, 0], color: theme.palette.scopes.scope1, stack: 'total', id: 1 },
+                  { label: 'Scope 2', data: [0, totals[1], 0], color: theme.palette.scopes.scope2, stack: 'total', id: 2 },
+                  { label: 'Scope 3', data: [0, 0, totals[2]], color: theme.palette.scopes.scope3, stack: 'total', id: 3 },
+                ].filter(s => selectedScopes.includes(s.id));
+
+                return (
+                  <BarChart
+                    height={300}
+                    xAxis={[{ scaleType: 'band', data: allLabels }]}
+                    yAxis={[{ label: 'Total tCO2e' }]}
+                    series={allSeries}
+                    grid={{ horizontal: true }}
+                    margin={{ left: 10, right: 10, top: 10, bottom: 30 }}
+                    slotProps={{ legend: { hidden: true } }} // Hide legend to save space if redundant
+                  />
+                )
+              })()}
+
+              {/* Summary Text */}
+              <Box sx={{ mt: 3 }}>
+                <Card variant="outlined" sx={{
+                  background: 'linear-gradient(135deg, rgba(25, 118, 210, 0.08) 0%, rgba(25, 118, 210, 0.02) 100%)',
+                  borderColor: 'primary.main',
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  boxShadow: 1
+                }}>
+                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 1.2, display: 'block', lineHeight: 1 }}>
+                        Total Emissions
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 500, color: 'primary.main', mt: 0.5 }}>
+                        {
+                          (project.scopes || [])
+                            .reduce((acc, s) => acc + Number(s.total_emissions_tco2e || 0), 0)
+                            .toFixed(2)
+                        }
+                        <Typography component="span" variant="body1" sx={{ ml: 0.5, fontWeight: 600, color: 'text.secondary' }}>
+                          tCO₂e
+                        </Typography>
+                      </Typography>
+                    </Box>
+                    <Avatar sx={{ bgcolor: 'white', color: 'primary.main', width: 48, height: 48, boxShadow: 1 }}>
+                      <TrendingUpIcon />
+                    </Avatar>
+                  </CardContent>
+                </Card>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Right Column: Activities List */}
+        <Grid item xs={12} md={8}>
+          <Card sx={{ height: '100%', width: 775 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">Activities</Typography>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<CalculateIcon />} // Or Add, but Calculate implies emission factor add
+                  onClick={() => {
+                    setEditingActivityId(null);
+                    setActivityType('emission_factor');
+                    setNewActivity({
+                      scope: 1,
+                      activityName: "",
+                      description: "",
+                      quantity: "",
+                      emissionFactorId: "",
+                      scope3Category: "",
+                      isRecurring: true,
+                      periodStart: "",
+                      periodEnd: ""
+                    });
+                    setDialogOpen(true);
+                  }}
+                >
+                  Add Activity
+                </Button>
+              </Box>
+
+              {(() => {
+                // Combine both emission factor activities and LCA activities
+                const rows = (project.scopes || [])
+                  .filter(s => selectedScopes.includes(s.scope_number))
+                  .flatMap(s => {
+                    const emissionActivities = (s.activities || []).map(a => ({
+                      id: `ef-${a.activity_id}`,
+                      activityId: a.activity_id,
+                      type: 'Emission Factor',
+                      scopeNumber: s.scope_number,
+                      activityName: a.activity_name,
+                      quantity: Number(a.quantity || 0),
+                      unit: a.unit,
+                      source: a.emission_factor?.source || a.emission_factor?.name || '',
+                      emissions: isFinite(Number(a.calculated_emissions)) ? Number(a.calculated_emissions).toFixed(3) : "",
+                      scope3Category: a.scope3_category || '',
+                    }));
+
+                    const lcaActivities = (s.lca_activities || []).map(a => ({
+                      id: `lca-${a.activity_id}`,
+                      activityId: a.activity_id,
+                      type: 'LCA',
+                      scopeNumber: s.scope_number,
+                      activityName: a.activity_name,
+                      quantity: Number(a.quantity || 0),
+                      unit: a.bw2_unit || '',
+                      source: a.bw2_database || a.bw2_activity_name || 'LCA Product',
+                      emissions: isFinite(Number(a.emissions_tco2e)) ? Number(a.emissions_tco2e).toFixed(3) : "",
+                      scope3Category: a.scope3_category || '',
+                    }));
+
+                    return [...emissionActivities, ...lcaActivities];
+                  });
+
+                const columns = [
+                  {
+                    field: 'type',
+                    headerName: 'Type',
+                    width: 50,
+                    renderCell: (params) => (
+                      params.value === 'LCA' ?
+                        <ScienceIcon color="secondary" fontSize="small" titleAccess="LCA Activity" /> :
+                        <CalculateIcon color="primary" fontSize="small" titleAccess="Emission Factor" />
+                    )
+                  },
+                  {
+                    field: 'scopeNumber',
+                    headerName: 'Scope',
+                    width: 70,
+                    renderCell: (params) => (
+                      <Chip
+                        label={`S${params.value}`}
+                        size="small"
+                        sx={{
+                          bgcolor: theme.palette.scopes[`scope${params.value}`],
+                          color: 'white',
+                          height: 24,
+                          fontSize: '0.75rem'
+                        }}
+                      />
+                    )
+                  },
+                  { field: 'activityName', headerName: 'Activity', flex: 1.5, minWidth: 150 },
+                  {
+                    field: 'amount_unit',
+                    headerName: 'Amount',
+                    width: 120,
+                    valueGetter: (params, row) => `${row.quantity} ${row.unit || ''}`
+                  },
+                  // { field: 'source', headerName: 'Source', flex: 1, minWidth: 150 }, // Hide source to save space? Or keep it? Let's keep it but simplified
+                  { field: 'emissions', headerName: 'tCO₂e', width: 100, type: 'number', align: 'right', headerAlign: 'right' },
+                  {
+                    field: 'actions',
+                    headerName: '',
+                    width: 80,
+                    sortable: false,
+                    align: 'right',
+                    renderCell: (params) => (
+                      <Stack direction="row" spacing={0}>
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => handleEditActivity(params.row)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDeleteActivity(params.row.activityId, params.row.type)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    )
+                  },
+                ];
+
+                return (
+                  <div style={{ width: '100%' }}>
+                    <DataGrid
+                      autoHeight
+                      disableRowSelectionOnClick
+                      rows={rows}
+                      columns={columns}
+                      initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+                      pageSizeOptions={[5, 10, 25]}
+                      sx={{
+                        '& .MuiDataGrid-columnHeaders': { backgroundColor: 'background.default' },
+
+                        border: 'none',
+                        '& .MuiDataGrid-cell': { borderBottom: '1px solid #f0f0f0' }
+                      }}
+                      density="compact"
+                    />
+                  </div>
+                )
+              })()}
+            </CardContent>
+          </Card>
+        </Grid>
+
+      </Grid>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
           <Typography variant="h6" component="div">
-            Add New Activity
+            {editingActivityId ? 'Edit Activity' : 'Add New Activity'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Choose between simple emission factors or comprehensive LCA analysis
@@ -913,161 +1198,7 @@ function ProjectDetails() {
         onSelect={handleLCAProductSelect}
       />
 
-      <Divider sx={{ my: 3 }} />
 
-      {/* Combined Scope Overview */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2 }}>Scope Overview</Typography>
-          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
-            {[1, 2, 3].map(n => (
-              <Chip
-                key={n}
-                label={`Scope ${n}`}
-                sx={{
-                  bgcolor: selectedScopes.includes(n) ? theme.palette.scopes[`scope${n}`] : 'transparent',
-                  color: selectedScopes.includes(n) ? 'white' : 'text.primary',
-                  borderColor: theme.palette.scopes[`scope${n}`],
-                  '&:hover': {
-                    bgcolor: selectedScopes.includes(n) ? theme.palette.scopes[`scope${n}`] : `${theme.palette.scopes[`scope${n}`]}22`,
-                  }
-                }}
-                variant={selectedScopes.includes(n) ? 'filled' : 'outlined'}
-                onClick={() => setSelectedScopes(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}
-              />
-            ))}
-            <Chip label="Reset" onClick={() => setSelectedScopes([1, 2, 3])} variant="outlined" />
-          </Stack>
-
-          {(() => {
-            const totals = [1, 2, 3].map(n => {
-              const s = (project.scopes || []).find(sc => sc.scope_number === n)
-              return Number(s?.total_emissions_tco2e || 0)
-            })
-
-            const allLabels = ['Scope 1', 'Scope 2', 'Scope 3'];
-            const allSeries = [
-              { label: 'Scope 1', data: [totals[0], 0, 0], color: theme.palette.scopes.scope1, stack: 'total', id: 1 },
-              { label: 'Scope 2', data: [0, totals[1], 0], color: theme.palette.scopes.scope2, stack: 'total', id: 2 },
-              { label: 'Scope 3', data: [0, 0, totals[2]], color: theme.palette.scopes.scope3, stack: 'total', id: 3 },
-            ].filter(s => selectedScopes.includes(s.id));
-
-            return (
-              <BarChart
-                height={280}
-                xAxis={[{ scaleType: 'band', data: allLabels }]}
-                series={allSeries}
-                grid={{ horizontal: true }}
-                margin={{ left: 60, right: 20, top: 10, bottom: 40 }}
-              />
-            )
-          })()}
-        </CardContent>
-      </Card>
-
-      {/* Activities Table (filtered by selected scopes) */}
-      <Card>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2 }}>Activities</Typography>
-          {(() => {
-            // Combine both emission factor activities and LCA activities
-            const rows = (project.scopes || [])
-              .filter(s => selectedScopes.includes(s.scope_number))
-              .flatMap(s => {
-                const emissionActivities = (s.activities || []).map(a => ({
-                  id: `ef-${a.activity_id}`,
-                  activityId: a.activity_id,
-                  type: 'Emission Factor',
-                  scopeNumber: s.scope_number,
-                  activityName: a.activity_name,
-                  quantity: Number(a.quantity || 0),
-                  unit: a.unit,
-                  source: a.emission_factor?.source || a.emission_factor?.name || '',
-                  emissions: isFinite(Number(a.calculated_emissions)) ? Number(a.calculated_emissions).toFixed(3) : "",
-                  scope3Category: a.scope3_category || '',
-                }));
-
-                const lcaActivities = (s.lca_activities || []).map(a => ({
-                  id: `lca-${a.activity_id}`,
-                  activityId: a.activity_id,
-                  type: 'LCA',
-                  scopeNumber: s.scope_number,
-                  activityName: a.activity_name,
-                  quantity: Number(a.quantity || 0),
-                  unit: a.bw2_unit || '',
-                  source: a.bw2_database || a.bw2_activity_name || 'LCA Product',
-                  emissions: isFinite(Number(a.emissions_tco2e)) ? Number(a.emissions_tco2e).toFixed(3) : "",
-                  scope3Category: a.scope3_category || '',
-                }));
-
-                return [...emissionActivities, ...lcaActivities];
-              });
-
-            const columns = [
-              {
-                field: 'type',
-                headerName: 'Type',
-                width: 130,
-                renderCell: (params) => (
-                  <Chip
-                    label={params.value}
-                    size="small"
-                    color={params.value === 'LCA' ? 'secondary' : 'default'}
-                    icon={params.value === 'LCA' ? <ScienceIcon /> : <CalculateIcon />}
-                  />
-                )
-              },
-              { field: 'scopeNumber', headerName: 'Scope', width: 80 },
-              { field: 'activityName', headerName: 'Activity', flex: 1, minWidth: 200 },
-              { field: 'quantity', headerName: 'Qty', width: 100, type: 'number' },
-              { field: 'unit', headerName: 'Unit', width: 100 },
-              { field: 'source', headerName: 'Source', flex: 1, minWidth: 200 },
-              { field: 'emissions', headerName: 'tCO₂e', width: 120, type: 'number' },
-              {
-                field: 'actions',
-                headerName: 'Actions',
-                width: 120,
-                sortable: false,
-                renderCell: (params) => (
-                  <Stack direction="row" spacing={1}>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => handleEditActivity(params.row)}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDeleteActivity(params.row.activityId, params.row.type)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
-                )
-              },
-            ];
-
-            return (
-              <div style={{ width: '100%' }}>
-                <DataGrid
-                  autoHeight
-                  disableRowSelectionOnClick
-                  rows={rows}
-                  columns={columns}
-                  initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-                  pageSizeOptions={[5, 10, 25]}
-                  sx={{
-                    '& .MuiDataGrid-columnHeaders': { backgroundColor: 'background.default' },
-                    borderRadius: 1,
-                  }}
-                />
-              </div>
-            )
-          })()}
-        </CardContent>
-      </Card>
     </Box>
   )
 }

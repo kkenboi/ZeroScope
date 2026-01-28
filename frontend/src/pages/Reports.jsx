@@ -103,8 +103,7 @@ const Reports = () => {
         return renderGHGReport()
       case 'iso':
         return renderISOReport()
-      case 'tcfd':
-        return renderTCFDReport()
+
       default:
         return null
     }
@@ -255,80 +254,7 @@ const Reports = () => {
     )
   }
 
-  const renderTCFDReport = () => {
-    const { governance, strategy, risk_management, metrics_and_targets } = reportData
-    return (
-      <Box>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
-              <CardHeader title="Governance" avatar={<DescriptionIcon color="primary" />} />
-              <CardContent>
-                <Typography variant="body2" color="text.secondary" paragraph>{governance.disclosure}</Typography>
-                <Chip label={governance.status} color="default" size="small" />
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
-              <CardHeader title="Strategy" avatar={<DescriptionIcon color="primary" />} />
-              <CardContent>
-                <Typography variant="body2" color="text.secondary" paragraph>{strategy.disclosure}</Typography>
-                <Typography variant="subtitle2">Scenarios Considered:</Typography>
-                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                  {strategy.scenarios.map(s => <Chip key={s} label={s} size="small" variant="outlined" />)}
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
-              <CardHeader title="Risk Management" avatar={<DescriptionIcon color="primary" />} />
-              <CardContent>
-                <Typography variant="body2" color="text.secondary" paragraph>{risk_management.disclosure}</Typography>
-                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                  {risk_management.processes.map(p => <Chip key={p} label={p} size="small" color="warning" variant="outlined" />)}
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
-              <CardHeader title="Metrics & Targets" avatar={<DescriptionIcon color="primary" />} />
-              <CardContent>
-                <Typography variant="body2" color="text.secondary" paragraph>{metrics_and_targets.disclosure}</Typography>
-                <TableContainer>
-                  <Table size="small">
-                    <TableBody>
-                      <TableRow>
-                        <TableCell>Scope 1</TableCell>
-                        <TableCell align="right">{metrics_and_targets.scope_1} tCO₂e</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>Scope 2</TableCell>
-                        <TableCell align="right">{metrics_and_targets.scope_2} tCO₂e</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>Scope 3</TableCell>
-                        <TableCell align="right">{metrics_and_targets.scope_3} tCO₂e</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell><strong>Total</strong></TableCell>
-                        <TableCell align="right"><strong>{metrics_and_targets.total_emissions} tCO₂e</strong></TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                <Box sx={{ mt: 2, p: 1, bgcolor: 'success.light', borderRadius: 1, color: 'success.contrastText' }}>
-                  <Typography variant="caption" fontWeight="bold">TARGET: {metrics_and_targets.target}</Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </Box>
-    )
-  }
+
 
   return (
     <Box sx={{ width: "100%", pb: 3 }}>
@@ -367,7 +293,7 @@ const Reports = () => {
                 >
                   <MenuItem value="ghg">GHG Protocol (Corporate)</MenuItem>
                   <MenuItem value="iso">ISO 14040/14044 (LCA)</MenuItem>
-                  <MenuItem value="tcfd">TCFD (Climate Risk)</MenuItem>
+
                 </Select>
               </FormControl>
             </Grid>
