@@ -33,7 +33,8 @@ import {
   Select,
   MenuItem,
   Tabs,
-  Tab
+  Tab,
+  Snackbar
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -49,6 +50,7 @@ import {
   AutoAwesome as AutoAwesomeIcon
 } from "@mui/icons-material";
 import CustomProductEditorWrapper from "./CustomProductEditor";
+import AlternativeMaterialsDialog from "./AlternativeMaterialsDialog";
 
 function TabPanel({ children, value, index }) {
   return (
@@ -75,6 +77,7 @@ function CustomProductCreator() {
   const [searching, setSearching] = useState(false);
   const [selectedInput, setSelectedInput] = useState(null);
   const [inputAmount, setInputAmount] = useState(1.0);
+  const [altDialogOpen, setAltDialogOpen] = useState(false);
 
   // Outputs State
   const [outputs, setOutputs] = useState([]);
@@ -96,6 +99,9 @@ function CustomProductCreator() {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Dialog Tabs State
+  const [dialogTabValue, setDialogTabValue] = useState(0);
 
   const commonUnits = [
     "kilogram",
@@ -127,6 +133,9 @@ function CustomProductCreator() {
   // AI State
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Loading state for product updating
+  const [updatingProduct, setUpdatingProduct] = useState(false);
 
   useEffect(() => {
     if (tabValue === 1) {
@@ -565,6 +574,66 @@ function CustomProductCreator() {
     );
   }
 
+  const handleSelectAlternative = async (alt) => {
+    // altDialogOpen holds the index of the input being edited when it's a number
+    if (typeof altDialogOpen !== 'number' || !productDetails) {
+      setAltDialogOpen(false);
+      return;
+    }
+
+    const inputIndex = altDialogOpen;
+    setAltDialogOpen(false);
+    setUpdatingProduct(true);
+    setErrorMessage("");
+
+    try {
+      // 1. Construct the new exchanges list
+      // existing inputs
+      const newInputs = productDetails.inputs.map(inp => ({
+        input_database: inp.database,
+        input_code: inp.input_code, // Need to ensure the backend returns this in verify_custom_product
+        amount: inp.amount,
+        type: inp.type || 'technosphere',
+        unit: inp.unit
+      }));
+
+      // Replace the selected one
+      const oldInput = productDetails.inputs[inputIndex];
+      newInputs[inputIndex] = {
+        input_database: alt.database,
+        input_code: alt.code,
+        amount: oldInput.amount,
+        type: alt.type || 'technosphere',
+        unit: alt.unit || oldInput.unit
+      };
+
+      // 2. Call the update API
+      const response = await fetch('/api/brightway2/update_custom_product/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          database_name: productDetails.database,
+          activity_code: productDetails.code,
+          exchanges: newInputs
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setStatusMessage("Custom product successfully updated with alternative.");
+        // Refresh the product details to show the new input
+        await viewProductDetails(productDetails);
+      } else {
+        setErrorMessage(result.error || "Failed to update custom product.");
+      }
+    } catch (error) {
+      setErrorMessage("Network error updating product.");
+      console.error(error);
+    } finally {
+      setUpdatingProduct(false);
+    }
+  };
+
   return (
     <Box sx={{ width: "100%" }}>
       <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
@@ -585,6 +654,26 @@ function CustomProductCreator() {
           {errorMessage}
         </Alert>
       )}
+
+      <Snackbar
+        open={!!statusMessage}
+        autoHideDuration={6000}
+        onClose={() => setStatusMessage("")}
+      >
+        <Alert severity="success" sx={{ width: "100%" }}>
+          {statusMessage}
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={!!errorMessage}
+        autoHideDuration={6000}
+        onClose={() => setErrorMessage("")}
+      >
+        <Alert severity="error" sx={{ width: "100%" }}>
+          {errorMessage}
+        </Alert>
+      </Snackbar>
 
       {/* Tab 1: Create Product */}
       <TabPanel value={tabValue} index={0}>
@@ -972,81 +1061,119 @@ function CustomProductCreator() {
           {selectedProduct && ` - ${selectedProduct.name}`}
         </DialogTitle>
         <DialogContent>
-          {loadingDetails ? (
-            <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+          {loadingDetails || updatingProduct ? (
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, gap: 2 }}>
               <CircularProgress />
+              {updatingProduct && <Typography variant="body2" color="text.secondary">Updating custom product...</Typography>}
             </Box>
           ) : productDetails ? (
             <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                <strong>Basic Information</strong>
-              </Typography>
-              <Typography variant="body2">Database: {productDetails.database}</Typography>
-              <Typography variant="body2">Location: {productDetails.location}</Typography>
-              <Typography variant="body2">Unit: {productDetails.unit}</Typography>
-              {productDetails.description && (
-                <Typography variant="body2">Description: {productDetails.description}</Typography>
-              )}
+              <Tabs
+                value={dialogTabValue}
+                onChange={(e, val) => setDialogTabValue(val)}
+                sx={{ borderBottom: 1, borderColor: "divider", mb: 2 }}
+              >
+                <Tab label="Overview" />
+                <Tab label={`Inputs (${productDetails.inputs.length})`} />
+                <Tab label={`Outputs (${productDetails.outputs.length})`} />
+              </Tabs>
 
-              <Divider sx={{ my: 2 }} />
+              <TabPanel value={dialogTabValue} index={0}>
+                <Typography variant="subtitle1" gutterBottom>
+                  <strong>Basic Information</strong>
+                </Typography>
+                <Typography variant="body2">Database: {productDetails.database}</Typography>
+                <Typography variant="body2">Location: {productDetails.location}</Typography>
+                <Typography variant="body2">Unit: {productDetails.unit}</Typography>
+                {productDetails.description && (
+                  <Typography variant="body2" sx={{ mt: 1 }}>Description: {productDetails.description}</Typography>
+                )}
+              </TabPanel>
 
-              <Typography variant="subtitle1" gutterBottom>
-                <strong>Outputs ({productDetails.outputs.length})</strong>
-              </Typography>
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell align="right">Amount</TableCell>
-                      <TableCell>Unit</TableCell>
-                      <TableCell>Type</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {productDetails.outputs.map((output, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{output.input_name}</TableCell>
-                        <TableCell align="right">{output.amount.toExponential(3)}</TableCell>
-                        <TableCell>{output.unit}</TableCell>
-                        <TableCell>
-                          <Chip label={output.type} size="small" color="success" />
-                        </TableCell>
+              <TabPanel value={dialogTabValue} index={1}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Resources and processes required to produce this product.
+                </Typography>
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Name</TableCell>
+                        <TableCell align="right">Amount</TableCell>
+                        <TableCell>Unit</TableCell>
+                        <TableCell>Location</TableCell>
+                        <TableCell>Database</TableCell>
+                        <TableCell align="right">Actions</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {productDetails.inputs.map((input, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{input.input_name}</TableCell>
+                          <TableCell align="right">{input.amount.toExponential(3)}</TableCell>
+                          <TableCell>{input.unit}</TableCell>
+                          <TableCell>{input.location || 'Unknown'}</TableCell>
+                          <TableCell>
+                            <Chip label={input.database} size="small" />
+                          </TableCell>
+                          <TableCell align="right">
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                // We simulate the object structure needed by AlternativeMaterialsDialog
+                                setSelectedInput({
+                                  database: input.database,
+                                  code: input.input_code || '', // Needs to be fetched if not returned by verify_custom_product
+                                  name: input.input_name,
+                                  location: input.location || 'Unknown',
+                                  unit: input.unit,
+                                  type: input.type,
+                                  amount: input.amount
+                                });
+                                // Keep track of the index being edited
+                                setAltDialogOpen(index);
+                              }}
+                            >
+                              Explore Alternatives
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </TabPanel>
 
-              <Divider sx={{ my: 2 }} />
-
-              <Typography variant="subtitle1" gutterBottom>
-                <strong>Inputs ({productDetails.inputs.length})</strong>
-              </Typography>
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell align="right">Amount</TableCell>
-                      <TableCell>Unit</TableCell>
-                      <TableCell>Database</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {productDetails.inputs.map((input, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{input.input_name}</TableCell>
-                        <TableCell align="right">{input.amount.toExponential(3)}</TableCell>
-                        <TableCell>{input.unit}</TableCell>
-                        <TableCell>
-                          <Chip label={input.database} size="small" />
-                        </TableCell>
+              <TabPanel value={dialogTabValue} index={2}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Products generated by this process.
+                </Typography>
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Name</TableCell>
+                        <TableCell align="right">Amount</TableCell>
+                        <TableCell>Unit</TableCell>
+                        <TableCell>Type</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {productDetails.outputs.map((output, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{output.input_name}</TableCell>
+                          <TableCell align="right">{output.amount.toExponential(3)}</TableCell>
+                          <TableCell>{output.unit}</TableCell>
+                          <TableCell>
+                            <Chip label={output.type} size="small" color="success" />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </TabPanel>
             </Box>
           ) : (
             <Alert severity="error">Failed to load product details</Alert>
@@ -1056,6 +1183,13 @@ function CustomProductCreator() {
           <Button onClick={() => setProductDetailsDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      <AlternativeMaterialsDialog
+        open={altDialogOpen !== false} // true boolean or index number
+        onClose={() => setAltDialogOpen(false)}
+        selectedActivity={selectedInput}
+        onSelectAlternative={handleSelectAlternative}
+      />
     </Box>
   );
 }

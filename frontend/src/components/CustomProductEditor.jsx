@@ -317,14 +317,14 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
                         type: 'inputNode',
                         position: { x: 0, y: 0 }, // Position will be handled by layout
                         data: {
-                            label: ex.input,
+                            label: ex.input_name,
                             type: ex.type,
                             quantity: ex.amount,
                             unit: ex.unit,
-                            input_database: ex.input_database,
+                            input_database: ex.database,
                             input_code: ex.input_code,
-                            location: 'Unknown',
-                            database: ex.input_database,
+                            location: ex.location || 'Unknown',
+                            database: ex.database,
                             onChange: handleNodeQuantityChange,
                             onExpand: handleNodeExpand,
                             expanded: false
@@ -406,14 +406,14 @@ const CustomProductEditor = ({ activity, onClose, onSaveSuccess }) => {
                         type: 'inputNode',
                         position: { x: 0, y: 0 },
                         data: {
-                            label: ex.input,
+                            label: ex.input_name,
                             type: ex.type,
                             quantity: ex.amount,
                             unit: ex.unit,
-                            input_database: ex.input_database,
+                            input_database: ex.database,
                             input_code: ex.input_code,
-                            location: 'Unknown',
-                            database: ex.input_database,
+                            location: ex.location || 'Unknown',
+                            database: ex.database,
                             onChange: handleNodeQuantityChange,
                             onExpand: handleNodeExpand,
                             expanded: false

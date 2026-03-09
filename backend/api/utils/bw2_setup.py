@@ -393,14 +393,16 @@ class BW2LCA:
             
             exchanges = []
             for exc in activity.exchanges():
-                exchanges.append({
-                    'input': exc.input['name'],
+                exchange_data = {
+                    'input_name': exc.input['name'],
+                    'input_code': exc.input['code'],
                     'amount': float(exc['amount']),
                     'unit': exc.input.get('unit', 'Unknown'),
+                    'location': exc.input.get('location', 'Unknown'),
                     'type': exc['type'],
-                    'input_database': exc.input['database'],
-                    'input_code': exc.input['code']
-                })
+                    'database': exc.input['database']
+                }
+                exchanges.append(exchange_data)
             
             return {
                 'success': True,
@@ -736,8 +738,10 @@ class BW2LCA:
             for exc in activity.exchanges():
                 exchange_data = {
                     'input_name': exc.input['name'],
+                    'input_code': exc.input['code'],
                     'amount': float(exc['amount']),
                     'unit': exc.input.get('unit', 'Unknown'),
+                    'location': exc.input.get('location', 'Unknown'),
                     'type': exc['type'],
                     'database': exc.input['database']
                 }

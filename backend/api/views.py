@@ -1060,6 +1060,136 @@ class BW2AdminViewSet(viewsets.ViewSet):
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
+    @action(detail=False, methods=['GET', 'POST'])
+    def get_alternatives(self, request):
+        """
+        Get alternative locations and materials for a given activity.
+        GET for query params, POST for body.
+        Expects: database_name, activity_code
+        """
+        try:
+            from .utils.bw2_setup import BW2LCA
+            import os
+            import json
+            import traceback
+            from google import genai
+            
+            if request.method == 'POST':
+                database_name = request.data.get('database_name')
+                activity_code = request.data.get('activity_code')
+            else:
+                database_name = request.query_params.get('database_name')
+                activity_code = request.query_params.get('activity_code')
+            
+            if not database_name or not activity_code:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required parameters: database_name, activity_code'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            bw2Instance = BW2LCA()
+            
+            # 1. Get original activity details
+            exchanges_res = bw2Instance.get_exchanges(database_name, activity_code)
+            if not exchanges_res['success']:
+                return Response(exchanges_res, status=status.HTTP_400_BAD_REQUEST)
+            activity_details = exchanges_res['activity']
+                
+            activity_name = activity_details.get('name', '')
+            original_location = activity_details.get('location', '')
+            original_unit = activity_details.get('unit', '')
+            
+            # Calculate impact of original
+            impact_res = bw2Instance.calculate_activity_impact(database_name, activity_code, 1.0)
+            original_impact = impact_res.get('impact', 0) if impact_res['success'] else None
+            
+            # 2. Location Alternatives
+            location_alternatives = []
+            if activity_name:
+                search_res = bw2Instance.search_activities_for_inputs(activity_name, limit=20, database_filters=[database_name])
+                if search_res['success']:
+                    for act in search_res['activities']:
+                        # Exact name match, different location
+                        if act['name'] == activity_name and act['location'] != original_location:
+                            alt_impact_res = bw2Instance.calculate_activity_impact(act['database'], act['code'], 1.0)
+                            if alt_impact_res['success']:
+                                location_alternatives.append({
+                                    'code': act['code'],
+                                    'name': act['name'],
+                                    'location': act['location'],
+                                    'unit': act['unit'],
+                                    'database': act['database'],
+                                    'impact': alt_impact_res['impact'],
+                                    'impact_diff': alt_impact_res['impact'] - original_impact if original_impact is not None else 0
+                                })
+            
+            # 3. Material Alternatives using GenAI
+            material_alternatives = []
+            if activity_name:
+                api_key = os.environ.get("GEMINI_API_KEY")
+                if api_key:
+                    try:
+                        client = genai.Client(api_key=api_key)
+                        prompt = f"""
+                        You are an expert in industrial materials and Life Cycle Assessment.
+                        Given the following material/process: "{activity_name}"
+                        Suggest 3 alternative materials that could serve a similar purpose but might have a different environmental footprint.
+                        For example if the material is polycarbonate, you could suggest ABS or PET.
+                        Keep the suggestions concise, just the name of the substitute material that would exist in an LCA database like ecoinvent.
+                        Return ONLY a JSON array of strings. e.g. ["Material A", "Material B", "Material C"]
+                        """
+                        response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=prompt
+                        )
+                        response_text = response.text.replace('```json', '').replace('```', '').strip()
+                        suggested_materials = json.loads(response_text)
+                        
+                        for material in suggested_materials:
+                            m_search = bw2Instance.search_activities_for_inputs(material, limit=3, database_filters=['ecoinvent'])
+                            if m_search['success'] and m_search['activities']:
+                                best_match = m_search['activities'][0]
+                                m_impact_res = bw2Instance.calculate_activity_impact(best_match['database'], best_match['code'], 1.0)
+                                if m_impact_res['success']:
+                                    material_alternatives.append({
+                                        'suggested_material': material,
+                                        'code': best_match['code'],
+                                        'name': best_match['name'],
+                                        'location': best_match['location'],
+                                        'unit': best_match['unit'],
+                                        'database': best_match['database'],
+                                        'impact': m_impact_res['impact'],
+                                        'impact_diff': m_impact_res['impact'] - original_impact if original_impact is not None else 0
+                                    })
+                    except Exception as e:
+                        print(f"GenAI Error in get_alternatives: {e}")
+                        pass
+            
+            location_alternatives.sort(key=lambda x: x['impact'])
+            material_alternatives.sort(key=lambda x: x['impact'])
+
+            return Response({
+                'success': True,
+                'original': {
+                    'code': activity_code,
+                    'name': activity_name,
+                    'location': original_location,
+                    'unit': original_unit,
+                    'database': database_name,
+                    'impact': original_impact
+                },
+                'location_alternatives': location_alternatives,
+                'material_alternatives': material_alternatives
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            return Response({
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_settings(request):
