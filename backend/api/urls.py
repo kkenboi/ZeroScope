@@ -8,6 +8,7 @@ from .views import (
 from .views_dashboard import dashboard_stats
 from .views_reports import generate_report
 from .views_visualization import GlobeDataView
+from .views_ai import generate_reduction_plan
 
 router = routers.DefaultRouter()
 router.register(r'projects', ProjectViewSet)
@@ -28,6 +29,7 @@ urlpatterns = [
     path('dashboard/stats/', dashboard_stats, name='dashboard_stats_all'),
     path('dashboard/stats/<uuid:project_id>/', dashboard_stats, name='dashboard_stats'),
     path('reports/generate/', generate_report, name='generate_report'),
+    path('projects/<uuid:project_id>/generate-reduction-plan/', generate_reduction_plan, name='generate_reduction_plan'),
     path('globe-data/<uuid:project_id>/', GlobeDataView.as_view(), name='globe_data'),
 ]
 

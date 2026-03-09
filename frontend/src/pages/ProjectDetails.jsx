@@ -41,6 +41,7 @@ import {
   TrendingUp as TrendingUpIcon,
 } from "@mui/icons-material"
 import LCAProductSearch from "../components/LCAProductSearch"
+import ReductionPlan from "../components/ReductionPlan"
 
 function ProjectDetails() {
   const theme = useTheme()
@@ -803,6 +804,9 @@ function ProjectDetails() {
         </Grid>
 
       </Grid>
+
+      {/* What's Next? - Reduction Plan */}
+      <ReductionPlan projectId={projectID} />
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
